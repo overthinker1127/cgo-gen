@@ -1,0 +1,9 @@
+version: 1
+
+input:
+  dir: ../simple-cpp/include
+  clang_args:
+    - -std=c++17
+
+output:
+  dir: pkg/foo

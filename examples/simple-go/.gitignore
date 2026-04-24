@@ -1,0 +1,5 @@
+build/
+.gocache/
+pkg/foo/foo_wrapper.h
+pkg/foo/foo_wrapper.cpp
+pkg/foo/foo_wrapper.ir.yaml

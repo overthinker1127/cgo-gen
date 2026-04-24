@@ -1,0 +1,5 @@
+build/
+.gocache/
+pkg/demo/thing_model_wrapper.go
+pkg/demo/thing_api_wrapper.go
+pkg/demo/raw/

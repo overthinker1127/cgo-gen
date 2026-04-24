@@ -1,0 +1,8 @@
+version: 1
+
+input:
+  dir: include
+
+output:
+  dir: out
+

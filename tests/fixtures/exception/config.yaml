@@ -1,0 +1,11 @@
+version: 1
+
+input:
+  dir: include
+
+output:
+  dir: out
+  header: wrapper.h
+  source: wrapper.cpp
+  ir: wrapper.ir.yaml
+
