@@ -117,12 +117,19 @@ fn discover_macos_fallback_include_dirs() -> Vec<PathBuf> {
         includes.extend(macos_toolchain_bin_include_candidates(&toolchain_bin));
     }
 
-    includes
-        .into_iter()
-        .filter(|path| path.exists())
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect()
+    includes.sort_by_key(|path| macos_include_priority(path));
+    existing_unique_paths_preserving_order(includes)
+}
+
+fn macos_include_priority(path: &Path) -> u8 {
+    let value = path.display().to_string();
+    if value.ends_with("/include/c++/v1") || value.ends_with("/usr/include/c++/v1") {
+        0
+    } else if value.contains("/lib/clang/") && value.ends_with("/include") {
+        1
+    } else {
+        2
+    }
 }
 
 fn macos_developer_include_candidates(developer_dir: &Path) -> Vec<PathBuf> {
@@ -218,6 +225,15 @@ fn discover_linux_fallback_include_dirs() -> Vec<PathBuf> {
         .filter(|path| path.exists())
         .collect::<BTreeSet<_>>()
         .into_iter()
+        .collect()
+}
+
+fn existing_unique_paths_preserving_order(paths: Vec<PathBuf>) -> Vec<PathBuf> {
+    let mut seen = BTreeSet::new();
+    paths
+        .into_iter()
+        .filter(|path| path.exists())
+        .filter(|path| seen.insert(path.clone()))
         .collect()
 }
 

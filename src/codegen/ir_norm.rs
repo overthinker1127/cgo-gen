@@ -179,17 +179,32 @@ pub fn normalize(ctx: &PipelineContext, api: &ParsedApi) -> Result<IrModule> {
         )?);
     }
 
+    let free_signature_groups = collect_function_signature_groups(&api.functions);
+    let mut emitted_free_signatures = BTreeMap::<String, BTreeSet<Vec<String>>>::new();
     for function in &api.functions {
-        if let Some(function) = normalize_function(
-            config,
-            function,
-            &abstract_types,
-            &callback_names,
-            &known_enum_types,
-            &records,
-            &mut skipped_declarations,
-        )? {
-            functions.push(function);
+        let group_key = cpp_qualified(&function.namespace, &function.name);
+        let existing_signatures = free_signature_groups
+            .get(&group_key)
+            .cloned()
+            .unwrap_or_default();
+        let emitted_signatures = emitted_free_signatures.entry(group_key).or_default();
+        for params in default_argument_param_variants(
+            &function.params,
+            &existing_signatures,
+            emitted_signatures,
+        ) {
+            if let Some(function) = normalize_function(
+                config,
+                function,
+                params,
+                &abstract_types,
+                &callback_names,
+                &known_enum_types,
+                &records,
+                &mut skipped_declarations,
+            )? {
+                functions.push(function);
+            }
         }
     }
 
@@ -487,6 +502,72 @@ fn ensure_unique_function_symbols(functions: &[IrFunction]) -> Result<()> {
     bail!("overload collision detected after suffix assignment: {message}")
 }
 
+fn collect_function_signature_groups(
+    functions: &[CppFunction],
+) -> BTreeMap<String, BTreeSet<Vec<String>>> {
+    let mut out = BTreeMap::new();
+    for function in functions {
+        out.entry(cpp_qualified(&function.namespace, &function.name))
+            .or_insert_with(BTreeSet::new)
+            .insert(cpp_param_signature(&function.params));
+    }
+    out
+}
+
+fn collect_constructor_signature_set(constructors: &[CppConstructor]) -> BTreeSet<Vec<String>> {
+    constructors
+        .iter()
+        .map(|constructor| cpp_param_signature(&constructor.params))
+        .collect()
+}
+
+fn collect_method_signature_groups(
+    methods: &[CppMethod],
+) -> BTreeMap<(String, bool), BTreeSet<Vec<String>>> {
+    let mut out = BTreeMap::new();
+    for method in methods {
+        out.entry((method.name.clone(), method.is_const))
+            .or_insert_with(BTreeSet::new)
+            .insert(cpp_param_signature(&method.params));
+    }
+    out
+}
+
+fn default_argument_param_variants<'a>(
+    params: &'a [CppParam],
+    existing_signatures: &BTreeSet<Vec<String>>,
+    emitted_signatures: &mut BTreeSet<Vec<String>>,
+) -> Vec<&'a [CppParam]> {
+    let mut lengths = Vec::new();
+    lengths.push(params.len());
+
+    let mut len = params.len();
+    while len > 0 && params[len - 1].has_default {
+        len -= 1;
+        lengths.push(len);
+    }
+
+    let mut out = Vec::new();
+    for len in lengths {
+        let variant = &params[..len];
+        let signature = cpp_param_signature(variant);
+        if len < params.len() && existing_signatures.contains(&signature) {
+            continue;
+        }
+        if emitted_signatures.insert(signature) {
+            out.push(variant);
+        }
+    }
+    out
+}
+
+fn cpp_param_signature(params: &[CppParam]) -> Vec<String> {
+    params
+        .iter()
+        .map(|param| param.canonical_ty.clone())
+        .collect()
+}
+
 fn normalize_record(
     config: &Config,
     record: &CppRecord,
@@ -525,18 +606,26 @@ fn normalize_record(
         });
     } else {
         let initial_len = functions.len();
+        let existing_signatures = collect_constructor_signature_set(&record.constructors);
+        let mut emitted_signatures = BTreeSet::new();
         for constructor in &record.constructors {
-            if let Some(function) = normalize_constructor(
-                config,
-                record,
-                handle_name,
-                constructor,
-                callback_names,
-                known_enum_types,
-                known_records,
-                skipped_declarations,
-            )? {
-                functions.push(function);
+            for params in default_argument_param_variants(
+                &constructor.params,
+                &existing_signatures,
+                &mut emitted_signatures,
+            ) {
+                if let Some(function) = normalize_constructor(
+                    config,
+                    record,
+                    handle_name,
+                    params,
+                    callback_names,
+                    known_enum_types,
+                    known_records,
+                    skipped_declarations,
+                )? {
+                    functions.push(function);
+                }
             }
         }
         if functions.len() == initial_len {
@@ -570,19 +659,34 @@ fn normalize_record(
         }],
     });
 
+    let method_signature_groups = collect_method_signature_groups(&record.methods);
+    let mut emitted_method_signatures = BTreeMap::<(String, bool), BTreeSet<Vec<String>>>::new();
     for method in &record.methods {
-        if let Some(function) = normalize_method(
-            config,
-            record,
-            handle_name,
-            method,
-            abstract_types,
-            callback_names,
-            known_enum_types,
-            known_records,
-            skipped_declarations,
-        )? {
-            functions.push(function);
+        let group_key = (method.name.clone(), method.is_const);
+        let existing_signatures = method_signature_groups
+            .get(&group_key)
+            .cloned()
+            .unwrap_or_default();
+        let emitted_signatures = emitted_method_signatures.entry(group_key).or_default();
+        for params in default_argument_param_variants(
+            &method.params,
+            &existing_signatures,
+            emitted_signatures,
+        ) {
+            if let Some(function) = normalize_method(
+                config,
+                record,
+                handle_name,
+                method,
+                params,
+                abstract_types,
+                callback_names,
+                known_enum_types,
+                known_records,
+                skipped_declarations,
+            )? {
+                functions.push(function);
+            }
         }
     }
 
@@ -929,21 +1033,21 @@ fn normalize_constructor(
     config: &Config,
     record: &CppRecord,
     handle_name: &str,
-    constructor: &CppConstructor,
+    cpp_params: &[CppParam],
     callback_names: &BTreeSet<String>,
     known_enum_types: &BTreeSet<String>,
     known_records: &[IrRecord],
     skipped_declarations: &mut Vec<SkippedDeclaration>,
 ) -> Result<Option<IrFunction>> {
     let qualified = cpp_qualified(&record.namespace, &record.name);
-    if let Some(reason) = function_pointer_reason(None, &constructor.params, callback_names) {
+    if let Some(reason) = function_pointer_reason(None, cpp_params, callback_names) {
         skipped_declarations.push(SkippedDeclaration {
             cpp_name: qualified.clone(),
             reason,
         });
         return Ok(None);
     }
-    if let Some(reason) = double_pointer_reason(None, &constructor.params) {
+    if let Some(reason) = double_pointer_reason(None, cpp_params) {
         skipped_declarations.push(SkippedDeclaration {
             cpp_name: qualified.clone(),
             reason,
@@ -964,8 +1068,7 @@ fn normalize_constructor(
             c_type: format!("{handle_name}*"),
             handle: Some(handle_name.to_string()),
         },
-        params: constructor
-            .params
+        params: cpp_params
             .iter()
             .map(|param| {
                 normalize_param(
@@ -985,6 +1088,7 @@ fn normalize_method(
     record: &CppRecord,
     handle_name: &str,
     method: &CppMethod,
+    cpp_params: &[CppParam],
     abstract_types: &BTreeSet<String>,
     callback_names: &BTreeSet<String>,
     known_enum_types: &BTreeSet<String>,
@@ -1006,7 +1110,7 @@ fn normalize_method(
             &method.return_canonical_type,
             method.return_is_function_pointer,
         )),
-        &method.params,
+        cpp_params,
         callback_names,
     ) {
         skipped_declarations.push(SkippedDeclaration { cpp_name, reason });
@@ -1014,14 +1118,14 @@ fn normalize_method(
     }
     if let Some(reason) = double_pointer_reason(
         Some((&method.return_type, &method.return_canonical_type)),
-        &method.params,
+        cpp_params,
     ) {
         skipped_declarations.push(SkippedDeclaration { cpp_name, reason });
         return Ok(None);
     }
     if let Some(reason) = raw_unsafe_by_value_reason(
         Some((&method.return_type, &method.return_canonical_type)),
-        &method.params,
+        cpp_params,
         callback_names,
         known_enum_types,
         known_records,
@@ -1048,8 +1152,7 @@ fn normalize_method(
         },
     });
     params.extend(
-        method
-            .params
+        cpp_params
             .iter()
             .map(|param| {
                 normalize_param(
@@ -1086,6 +1189,7 @@ fn normalize_method(
 fn normalize_function(
     config: &Config,
     function: &CppFunction,
+    cpp_params: &[CppParam],
     abstract_types: &BTreeSet<String>,
     callback_names: &BTreeSet<String>,
     known_enum_types: &BTreeSet<String>,
@@ -1106,7 +1210,7 @@ fn normalize_function(
             &function.return_canonical_type,
             function.return_is_function_pointer,
         )),
-        &function.params,
+        cpp_params,
         callback_names,
     ) {
         skipped_declarations.push(SkippedDeclaration { cpp_name, reason });
@@ -1114,14 +1218,14 @@ fn normalize_function(
     }
     if let Some(reason) = double_pointer_reason(
         Some((&function.return_type, &function.return_canonical_type)),
-        &function.params,
+        cpp_params,
     ) {
         skipped_declarations.push(SkippedDeclaration { cpp_name, reason });
         return Ok(None);
     }
     if let Some(reason) = raw_unsafe_by_value_reason(
         Some((&function.return_type, &function.return_canonical_type)),
-        &function.params,
+        cpp_params,
         callback_names,
         known_enum_types,
         known_records,
@@ -1146,8 +1250,7 @@ fn normalize_function(
             known_enum_types,
             known_records,
         )?,
-        params: function
-            .params
+        params: cpp_params
             .iter()
             .map(|param| {
                 normalize_param(
@@ -2744,6 +2847,7 @@ mod tests {
                     canonical_ty: "_DCS_HIST_ITEM*".to_string(),
                     is_function_pointer: false,
                     callback_typedef: None,
+                    has_default: false,
                 }],
             }],
         };

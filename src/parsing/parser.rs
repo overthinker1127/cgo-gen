@@ -78,6 +78,8 @@ pub struct CppParam {
     pub canonical_ty: String,
     pub is_function_pointer: bool,
     pub callback_typedef: Option<String>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub has_default: bool,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -618,6 +620,7 @@ fn parse_callback_typedef(
             canonical_ty: canonicalize_type_name(&cursor_canonical_type_spelling(arg)),
             is_function_pointer: cursor_is_function_pointer(arg),
             callback_typedef: callback_typedef_name_from_type(unsafe { clang_getCursorType(arg) }),
+            has_default: param_has_default(arg),
         })
         .enumerate()
         .map(|(index, mut param)| {
@@ -682,6 +685,7 @@ fn parse_params(cursor: CXCursor) -> Vec<CppParam> {
             canonical_ty: canonicalize_type_name(&cursor_canonical_type_spelling(arg)),
             is_function_pointer: cursor_is_function_pointer(arg),
             callback_typedef: callback_typedef_name_from_type(unsafe { clang_getCursorType(arg) }),
+            has_default: param_has_default(arg),
         })
         .enumerate()
         .map(|(index, mut param)| {
@@ -710,8 +714,19 @@ fn parse_callback_params_from_type(function_type: CXType) -> Vec<CppParam> {
             }),
             is_function_pointer: is_function_pointer_type(ty),
             callback_typedef: callback_typedef_name_from_type(ty),
+            has_default: false,
         })
         .collect()
+}
+
+fn param_has_default(cursor: CXCursor) -> bool {
+    cursor_token_spellings(cursor)
+        .iter()
+        .any(|token| token == "=")
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 fn result_type_name(cursor: CXCursor) -> String {

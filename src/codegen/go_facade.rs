@@ -35,6 +35,18 @@ struct RenderedCallPrep {
     args: Vec<String>,
 }
 
+#[derive(Debug)]
+struct OverloadDispatcher<'a> {
+    export_name: String,
+    functions: Vec<&'a IrFunction>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct DispatcherKey {
+    param_go_types: Vec<String>,
+    return_sig: String,
+}
+
 #[derive(Debug, Clone)]
 struct CallbackUsage<'a> {
     callback: &'a IrCallback,
@@ -254,6 +266,15 @@ fn render_go_facade_file(
 ) -> String {
     let package_name = go_package_name(&config.output.dir);
     let requires_cgo = !functions.is_empty() || !classes.is_empty();
+    let free_function_dispatchers = collect_free_function_dispatchers(config, functions);
+    let method_dispatchers = classes
+        .iter()
+        .map(|class| (class, collect_method_dispatchers(config, class)))
+        .collect::<Vec<_>>();
+    let requires_fmt = !free_function_dispatchers.is_empty()
+        || method_dispatchers
+            .iter()
+            .any(|(_, dispatchers)| !dispatchers.is_empty());
     let requires_errors = classes.iter().any(|class| !class.constructors.is_empty())
         || functions.iter().any(|function| {
             matches!(
@@ -326,6 +347,9 @@ fn render_go_facade_file(
     if requires_errors {
         out.push_str("import \"errors\"\n\n");
     }
+    if requires_fmt {
+        out.push_str("import \"fmt\"\n\n");
+    }
     if requires_unsafe {
         out.push_str("import \"unsafe\"\n\n");
     }
@@ -372,6 +396,10 @@ fn render_go_facade_file(
         ));
         out.push('\n');
     }
+    for dispatcher in &free_function_dispatchers {
+        out.push_str(&render_free_function_dispatcher(config, dispatcher));
+        out.push('\n');
+    }
 
     // Also track Go names used by primary class wrappers to catch cases where a typedef
     // and a class produce the same Go name (e.g. _LegId class → "LegId", LegId opaque → "LegId").
@@ -407,7 +435,7 @@ fn render_go_facade_file(
         }
     }
 
-    for class in classes {
+    for (class, dispatchers) in method_dispatchers {
         out.push_str(&render_facade_class(class));
         out.push('\n');
         let constructor_names = go_constructor_export_names(class);
@@ -434,6 +462,10 @@ fn render_go_facade_file(
                 &covered_handles,
                 owned_opaque_value_handles,
             ));
+            out.push('\n');
+        }
+        for dispatcher in &dispatchers {
+            out.push_str(&render_method_dispatcher(config, class, dispatcher));
             out.push('\n');
         }
     }
@@ -1064,6 +1096,306 @@ fn render_free_function(
     ));
     out.push_str("}\n");
     out
+}
+
+fn collect_free_function_dispatchers<'a>(
+    config: &PipelineContext,
+    functions: &[&'a IrFunction],
+) -> Vec<OverloadDispatcher<'a>> {
+    let mut by_export = BTreeMap::<String, Vec<&'a IrFunction>>::new();
+    for function in functions
+        .iter()
+        .copied()
+        .filter(|function| has_disambiguated_raw_overload_suffix(function))
+    {
+        by_export
+            .entry(go_export_name(&leaf_cpp_name(&function.cpp_name)))
+            .or_default()
+            .push(function);
+    }
+
+    by_export
+        .into_iter()
+        .filter_map(|(export_name, mut group)| {
+            build_dispatcher(config, export_name, &mut group, go_facade_export_name)
+        })
+        .collect()
+}
+
+fn collect_method_dispatchers<'a>(
+    config: &PipelineContext,
+    class: &AnalyzedFacadeClass<'a>,
+) -> Vec<OverloadDispatcher<'a>> {
+    let mut by_export = BTreeMap::<String, Vec<&'a IrFunction>>::new();
+    for function in class
+        .methods
+        .iter()
+        .copied()
+        .filter(|function| has_disambiguated_raw_overload_suffix(function))
+    {
+        by_export
+            .entry(go_export_name(method_name(function)))
+            .or_default()
+            .push(function);
+    }
+
+    by_export
+        .into_iter()
+        .filter_map(|(export_name, mut group)| {
+            build_dispatcher(config, export_name, &mut group, go_method_export_name)
+        })
+        .collect()
+}
+
+fn build_dispatcher<'a>(
+    config: &PipelineContext,
+    export_name: String,
+    group: &mut Vec<&'a IrFunction>,
+    typed_export_name: fn(&IrFunction) -> String,
+) -> Option<OverloadDispatcher<'a>> {
+    if group.len() < 2 {
+        return None;
+    }
+    if !dispatcher_group_is_safe(config, group) {
+        return None;
+    }
+    group.sort_by_key(|function| typed_export_name(function));
+    Some(OverloadDispatcher {
+        export_name,
+        functions: group.clone(),
+    })
+}
+
+fn dispatcher_group_is_safe(config: &PipelineContext, functions: &[&IrFunction]) -> bool {
+    let mut seen = BTreeSet::<DispatcherKey>::new();
+    let mut return_sig: Option<String> = None;
+    for function in functions {
+        let Some(key) = dispatcher_key(config, function) else {
+            return false;
+        };
+        if dispatcher_return_sig(&key.return_sig).is_none() {
+            return false;
+        }
+        if return_sig
+            .as_deref()
+            .is_some_and(|sig| sig != key.return_sig)
+        {
+            return false;
+        }
+        return_sig.get_or_insert_with(|| key.return_sig.clone());
+        if !seen.insert(key) {
+            return false;
+        }
+    }
+    true
+}
+
+fn dispatcher_key(config: &PipelineContext, function: &IrFunction) -> Option<DispatcherKey> {
+    let params = dispatcher_params(function);
+    let param_go_types = params
+        .iter()
+        .map(|param| go_param_type(config, &param.ty))
+        .collect::<Option<Vec<_>>>()?;
+    Some(DispatcherKey {
+        param_go_types,
+        return_sig: go_return_sig(config, &function.returns),
+    })
+}
+
+fn dispatcher_params(function: &IrFunction) -> Vec<&ir_norm::IrParam> {
+    if function.method_of.is_some() {
+        function.params.iter().skip(1).collect()
+    } else {
+        function.params.iter().collect()
+    }
+}
+
+fn dispatcher_return_sig(direct_return_sig: &str) -> Option<String> {
+    if direct_return_sig.is_empty() {
+        Some("error".to_string())
+    } else if direct_return_sig.contains("error") {
+        Some(direct_return_sig.to_string())
+    } else if direct_return_sig.starts_with('(') {
+        None
+    } else {
+        Some(format!("({direct_return_sig}, error)"))
+    }
+}
+
+fn dispatcher_zero_return(config: &PipelineContext, function: &IrFunction) -> Option<String> {
+    match function.returns.kind {
+        IrTypeKind::Void => return Some(String::new()),
+        IrTypeKind::String | IrTypeKind::CString => return Some("\"\", ".to_string()),
+        IrTypeKind::FixedByteArray | IrTypeKind::FixedArray | IrTypeKind::FixedModelArray => {
+            return Some("nil, ".to_string());
+        }
+        _ => {}
+    }
+    let sig = go_return_sig(config, &function.returns);
+    if sig.starts_with('*') || sig == "unsafe.Pointer" {
+        Some("nil, ".to_string())
+    } else {
+        go_value_type(config, &function.returns)
+            .map(|go_type| format!("{}, ", zero_value_for_go_type(&go_type)))
+    }
+}
+
+fn render_free_function_dispatcher(
+    config: &PipelineContext,
+    dispatcher: &OverloadDispatcher<'_>,
+) -> String {
+    render_dispatcher(config, dispatcher, None, |function, args| {
+        format!("{}({})", go_facade_export_name(function), args.join(", "))
+    })
+}
+
+fn render_method_dispatcher(
+    config: &PipelineContext,
+    class: &AnalyzedFacadeClass<'_>,
+    dispatcher: &OverloadDispatcher<'_>,
+) -> String {
+    let receiver = receiver_name(&class.go_name);
+    render_dispatcher(
+        config,
+        dispatcher,
+        Some((receiver.as_str(), class.go_name.as_str())),
+        |function, args| {
+            format!(
+                "{receiver}.{}({})",
+                go_method_export_name(function),
+                args.join(", ")
+            )
+        },
+    )
+}
+
+fn render_dispatcher<FCall>(
+    config: &PipelineContext,
+    dispatcher: &OverloadDispatcher<'_>,
+    receiver: Option<(&str, &str)>,
+    typed_call: FCall,
+) -> String
+where
+    FCall: Fn(&IrFunction, &[String]) -> String,
+{
+    let first = dispatcher.functions[0];
+    let direct_sig = go_return_sig(config, &first.returns);
+    let dispatcher_sig = dispatcher_return_sig(&direct_sig).unwrap();
+    let display_name = receiver
+        .map(|(_, class_name)| format!("{class_name}.{}", dispatcher.export_name))
+        .unwrap_or_else(|| dispatcher.export_name.clone());
+    let sig_part = if dispatcher_sig.is_empty() {
+        String::new()
+    } else {
+        format!(" {dispatcher_sig}")
+    };
+    let mut out = if let Some((receiver_name, class_name)) = receiver {
+        format!(
+            "func ({receiver_name} *{class_name}) {}(args ...any){sig_part} {{\n",
+            dispatcher.export_name
+        )
+    } else {
+        format!(
+            "func {}(args ...any){sig_part} {{\n",
+            dispatcher.export_name
+        )
+    };
+
+    if let Some((receiver_name, class_name)) = receiver {
+        let error_return =
+            dispatcher_error_return(config, first, &format!("{class_name} receiver is nil"));
+        out.push_str(&format!(
+            "    if {receiver_name} == nil || {receiver_name}.ptr == nil {{\n        {error_return}\n    }}\n"
+        ));
+    }
+
+    let mut by_arity = BTreeMap::<usize, Vec<&IrFunction>>::new();
+    for function in &dispatcher.functions {
+        by_arity
+            .entry(dispatcher_params(function).len())
+            .or_default()
+            .push(*function);
+    }
+
+    out.push_str("    switch len(args) {\n");
+    for (arity, functions) in by_arity {
+        out.push_str(&format!("    case {arity}:\n"));
+        for function in functions {
+            out.push_str(&render_dispatcher_candidate(config, function, &typed_call));
+        }
+    }
+    out.push_str("    }\n");
+    let error_return = dispatcher_error_return(
+        config,
+        first,
+        &format!("no matching overload for {display_name}"),
+    );
+    out.push_str(&format!("    {error_return}\n"));
+    out.push_str("}\n");
+    out
+}
+
+fn render_dispatcher_candidate<FCall>(
+    config: &PipelineContext,
+    function: &IrFunction,
+    typed_call: &FCall,
+) -> String
+where
+    FCall: Fn(&IrFunction, &[String]) -> String,
+{
+    let params = dispatcher_params(function);
+    let mut out = String::new();
+    out.push_str("        {\n");
+    let mut arg_names = Vec::new();
+    let mut ok_names = Vec::new();
+    for (index, param) in params.iter().enumerate() {
+        let arg_name = format!("arg{index}");
+        let ok_name = format!("ok{index}");
+        let go_type = go_param_type(config, &param.ty).unwrap();
+        out.push_str(&format!(
+            "            {arg_name}, {ok_name} := args[{index}].({go_type})\n"
+        ));
+        arg_names.push(arg_name);
+        ok_names.push(ok_name);
+    }
+    let condition = if ok_names.is_empty() {
+        "true".to_string()
+    } else {
+        ok_names.join(" && ")
+    };
+    let call = typed_call(function, &arg_names);
+    out.push_str(&format!("            if {condition} {{\n"));
+    out.push_str(&format!(
+        "                {}\n",
+        dispatcher_success_return(config, function, &call)
+    ));
+    out.push_str("            }\n");
+    out.push_str("        }\n");
+    out
+}
+
+fn dispatcher_success_return(
+    config: &PipelineContext,
+    function: &IrFunction,
+    call: &str,
+) -> String {
+    let sig = go_return_sig(config, &function.returns);
+    if sig.is_empty() {
+        format!("{call}\n                return nil")
+    } else if sig.contains("error") {
+        format!("return {call}")
+    } else {
+        format!("return {call}, nil")
+    }
+}
+
+fn dispatcher_error_return(
+    config: &PipelineContext,
+    function: &IrFunction,
+    message: &str,
+) -> String {
+    let zero = dispatcher_zero_return(config, function).unwrap_or_default();
+    format!("return {zero}fmt.Errorf(\"{message}\")")
 }
 
 fn render_callback_method(
