@@ -12,6 +12,7 @@ Thumbs.db
 # Local environment files
 .env
 .env.*
+.codex
 
 # Logs and temporary files
 *.log
