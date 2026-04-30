@@ -327,6 +327,7 @@ fn dedupe_api(api: &mut ParsedApi) {
 struct ParseFilter {
     main_file_only: bool,
     owned_dir: Option<PathBuf>,
+    owned_headers: BTreeSet<PathBuf>,
     target_header: Option<PathBuf>,
 }
 
@@ -335,6 +336,12 @@ impl ParseFilter {
         Self {
             main_file_only: false,
             owned_dir: ctx.input.dir.clone(),
+            owned_headers: ctx
+                .input
+                .headers
+                .iter()
+                .map(|path| path.canonicalize().unwrap_or_else(|_| path.clone()))
+                .collect(),
             target_header: ctx.target_header.clone(),
         }
     }
@@ -865,15 +872,29 @@ fn should_collect_cursor(cursor: CXCursor, filter: &ParseFilter) -> bool {
     let Some(path) = cursor_file_path(cursor) else {
         return false;
     };
+    if !is_header_path(&path) {
+        return false;
+    }
+    if !matches_target_path(&path, filter.target_header.as_ref()) {
+        return false;
+    }
+    if !filter.owned_headers.is_empty() {
+        return filter
+            .owned_headers
+            .iter()
+            .any(|header| same_path(&path, header));
+    }
     let Some(dir) = &filter.owned_dir else {
         return false;
     };
     path_is_within(&path, dir)
-        && is_header_path(&path)
-        && match filter.target_header.as_ref() {
-            Some(target) => same_path(&path, target),
-            None => true,
-        }
+}
+
+fn matches_target_path(path: &Path, target_header: Option<&PathBuf>) -> bool {
+    match target_header {
+        Some(target) => same_path(path, target),
+        None => true,
+    }
 }
 
 fn matches_target_header(cursor: CXCursor, target_header: Option<&PathBuf>) -> bool {

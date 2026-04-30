@@ -172,3 +172,75 @@ output:
     assert!(raw_source.contains("cgowrap_Api_IsReady"));
     assert!(raw_source.contains("#include \"Api.hpp\""));
 }
+
+#[test]
+fn headers_only_generation_emits_wrappers_only_for_listed_headers() {
+    let root = temp_dir("headers_only_selected_outputs");
+    let include_dir = root.join("include");
+    fs::create_dir_all(&include_dir).unwrap();
+
+    fs::write(
+        include_dir.join("Selected.hpp"),
+        r#"
+        #include "Skipped.hpp"
+
+        class Selected {
+        public:
+            Selected() {}
+            int GetValue() const { return 7; }
+        };
+        "#,
+    )
+    .unwrap();
+    fs::write(
+        include_dir.join("AlsoSelected.hpp"),
+        r#"
+        class AlsoSelected {
+        public:
+            AlsoSelected() {}
+            int GetValue() const { return 11; }
+        };
+        "#,
+    )
+    .unwrap();
+    fs::write(
+        include_dir.join("Skipped.hpp"),
+        r#"
+        class Skipped {
+        public:
+            Skipped() {}
+            int GetValue() const { return 9; }
+        };
+        "#,
+    )
+    .unwrap();
+
+    fs::write(
+        root.join("config.yaml"),
+        r#"
+version: 1
+input:
+  headers:
+    - include/Selected.hpp
+    - include/AlsoSelected.hpp
+output:
+  dir: gen
+"#,
+    )
+    .unwrap();
+
+    let config = Config::load(root.join("config.yaml")).unwrap();
+    let ctx = PipelineContext::new(config);
+    generator::generate_all(&ctx, true).unwrap();
+
+    let output_dir = root.join("gen");
+    assert!(output_dir.join("selected_wrapper.h").exists());
+    assert!(output_dir.join("selected_wrapper.cpp").exists());
+    assert!(output_dir.join("selected_wrapper.go").exists());
+    assert!(output_dir.join("also_selected_wrapper.h").exists());
+    assert!(output_dir.join("also_selected_wrapper.cpp").exists());
+    assert!(output_dir.join("also_selected_wrapper.go").exists());
+    assert!(!output_dir.join("skipped_wrapper.h").exists());
+    assert!(!output_dir.join("skipped_wrapper.cpp").exists());
+    assert!(!output_dir.join("skipped_wrapper.go").exists());
+}

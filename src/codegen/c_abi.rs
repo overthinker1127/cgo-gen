@@ -25,7 +25,7 @@ struct SyntheticOpaqueDelete {
 
 pub fn generate_all(ctx: &PipelineContext, write_ir: bool) -> Result<()> {
     let (ctx, parsed) = prepare_with_parsed(&ctx)?;
-    let generation_headers = generation_headers(&ctx);
+    let generation_headers = generation_headers(&ctx)?;
 
     if generation_headers.len() > 1 && !ctx.uses_default_output_names() {
         bail!(
@@ -127,39 +127,8 @@ fn class_handles_with_methods(ir: &IrModule) -> BTreeSet<String> {
         .collect()
 }
 
-fn generation_headers(ctx: &PipelineContext) -> Vec<PathBuf> {
-    ctx.input
-        .dir
-        .as_ref()
-        .and_then(|dir| scan_generation_headers(dir).ok())
-        .unwrap_or_default()
-}
-
-fn scan_generation_headers(dir: &Path) -> Result<Vec<PathBuf>> {
-    let mut headers = BTreeSet::new();
-    scan_generation_headers_recursive(dir, &mut headers)?;
-    Ok(headers.into_iter().collect())
-}
-
-fn scan_generation_headers_recursive(dir: &Path, headers: &mut BTreeSet<PathBuf>) -> Result<()> {
-    for entry in fs::read_dir(dir)
-        .with_context(|| format!("failed to read generation directory: {}", dir.display()))?
-    {
-        let path = entry?.path();
-        if path.is_dir() {
-            scan_generation_headers_recursive(&path, headers)?;
-            continue;
-        }
-        if path.is_file()
-            && matches!(
-                path.extension().and_then(|ext| ext.to_str()),
-                Some("h" | "hh" | "hpp" | "hxx")
-            )
-        {
-            headers.insert(path.canonicalize().unwrap_or(path));
-        }
-    }
-    Ok(())
+fn generation_headers(ctx: &PipelineContext) -> Result<Vec<PathBuf>> {
+    ctx.config.discovered_headers()
 }
 
 pub fn prepare_context(ctx: &PipelineContext) -> Result<PipelineContext> {

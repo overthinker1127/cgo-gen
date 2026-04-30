@@ -33,6 +33,10 @@ fn add_parse_entry_parent_include(args: &mut Vec<String>, parse_entry: &Path) {
 }
 
 pub fn collect_translation_units(config: &Config) -> Result<Vec<PathBuf>> {
+    if !config.input.headers.is_empty() {
+        return Ok(config.input.headers.clone());
+    }
+
     let Some(dir) = &config.input.dir else {
         return Ok(Vec::new());
     };

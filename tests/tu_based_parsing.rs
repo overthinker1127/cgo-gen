@@ -356,3 +356,101 @@ output:
     );
     assert!(parsed.records.iter().any(|record| record.name == "Thing"));
 }
+
+#[test]
+fn headers_only_config_uses_listed_headers_as_translation_units() {
+    let fixture = temp_fixture_dir("headers_only_translation_units");
+    fs::create_dir_all(fixture.join("include")).unwrap();
+
+    fs::write(fixture.join("include/A.hpp"), "class A {};").unwrap();
+    fs::write(fixture.join("include/B.hpp"), "class B {};").unwrap();
+    fs::write(fixture.join("include/C.hpp"), "class C {};").unwrap();
+    fs::write(
+        fixture.join("config.yaml"),
+        r#"
+version: 1
+input:
+  headers:
+    - include/B.hpp
+    - include/A.hpp
+output:
+  dir: gen
+"#,
+    )
+    .unwrap();
+
+    let config = Config::load(fixture.join("config.yaml")).unwrap();
+    let units = compiler::collect_translation_units(&config).unwrap();
+
+    assert_eq!(
+        units,
+        vec![
+            fixture.join("include/B.hpp").canonicalize().unwrap(),
+            fixture.join("include/A.hpp").canonicalize().unwrap(),
+        ]
+    );
+}
+
+#[test]
+fn headers_only_config_collects_only_listed_header_declarations() {
+    let fixture = temp_fixture_dir("headers_only_owned_set");
+    fs::create_dir_all(fixture.join("include")).unwrap();
+
+    fs::write(
+        fixture.join("include/entry.hpp"),
+        r#"
+        #include "dependency.hpp"
+
+        class Entry {
+        public:
+            int GetValue() const { return 7; }
+        };
+        "#,
+    )
+    .unwrap();
+    fs::write(
+        fixture.join("include/dependency.hpp"),
+        r#"
+        class Dependency {
+        public:
+            int GetValue() const { return 9; }
+        };
+        "#,
+    )
+    .unwrap();
+    fs::write(
+        fixture.join("config.yaml"),
+        r#"
+version: 1
+input:
+  headers:
+    - include/entry.hpp
+output:
+  dir: gen
+"#,
+    )
+    .unwrap();
+
+    let config = Config::load(fixture.join("config.yaml")).unwrap();
+    let parsed = parser::parse(&PipelineContext::new(config)).unwrap();
+
+    assert!(
+        parsed
+            .headers
+            .iter()
+            .any(|header| header.ends_with("entry.hpp"))
+    );
+    assert!(
+        !parsed
+            .headers
+            .iter()
+            .any(|header| header.ends_with("dependency.hpp"))
+    );
+    assert!(parsed.records.iter().any(|record| record.name == "Entry"));
+    assert!(
+        !parsed
+            .records
+            .iter()
+            .any(|record| record.name == "Dependency")
+    );
+}

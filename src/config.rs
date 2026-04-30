@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeSet,
     env, fs,
     path::{Path, PathBuf},
 };
@@ -21,6 +22,8 @@ pub struct Config {
 pub struct InputConfig {
     #[serde(default)]
     pub dir: Option<PathBuf>,
+    #[serde(default)]
+    pub headers: Vec<PathBuf>,
     #[serde(default)]
     pub clang_args: Vec<String>,
     #[serde(default)]
@@ -354,6 +357,10 @@ impl Config {
     }
 
     pub fn discovered_headers(&self) -> Result<Vec<PathBuf>> {
+        if !self.input.headers.is_empty() {
+            return Ok(self.input.headers.clone());
+        }
+
         let mut headers = Vec::new();
         if let Some(dir) = &self.input.dir {
             collect_headers_from_dir(dir, &mut headers)?;
@@ -378,6 +385,9 @@ impl Config {
         if let Some(dir) = &mut self.input.dir {
             resolve_path(dir, base_dir);
         }
+        for header in &mut self.input.headers {
+            resolve_path(header, base_dir);
+        }
         resolve_relative_clang_args(&mut self.input.clang_args, base_dir)?;
         resolve_ldflags(&mut self.input.ldflags, base_dir)?;
         if self.output.dir.is_relative() {
@@ -388,14 +398,38 @@ impl Config {
     }
 
     fn validate(&self) -> Result<()> {
-        let Some(dir) = &self.input.dir else {
-            bail!("config.input.dir must be set");
-        };
-        if dir.exists() && !dir.is_dir() {
+        if self.input.dir.is_some() && !self.input.headers.is_empty() {
+            bail!("config.input.dir and config.input.headers are mutually exclusive");
+        }
+        if self.input.dir.is_none() && self.input.headers.is_empty() {
+            bail!("config.input.dir or config.input.headers must be set");
+        }
+        if let Some(dir) = &self.input.dir
+            && dir.exists()
+            && !dir.is_dir()
+        {
             bail!(
                 "config.input.dir must point to a directory: {}",
                 dir.display()
             );
+        }
+        let mut seen_headers = BTreeSet::new();
+        for header in &self.input.headers {
+            if !header.exists() {
+                bail!("input.headers entry not found: {}", header.display());
+            }
+            if !header.is_file() {
+                bail!("input.headers entry must be a file: {}", header.display());
+            }
+            if !is_supported_header_path(header) {
+                bail!(
+                    "input.headers entry must be a supported header (.h, .hh, .hpp, .hxx): {}",
+                    header.display()
+                );
+            }
+            if !seen_headers.insert(header) {
+                bail!("input.headers entry is duplicated: {}", header.display());
+            }
         }
         Ok(())
     }

@@ -308,7 +308,166 @@ output:
     .unwrap();
 
     let error = format!("{:#}", Config::load(&config_path).unwrap_err());
-    assert!(error.contains("config.input.dir must be set"));
+    assert!(error.contains("config.input.dir or config.input.headers must be set"));
+}
+
+#[test]
+fn loads_headers_only_input_config_relative_to_config_dir() {
+    let dir = temp_test_dir("headers_only");
+    fs::create_dir_all(dir.join("include")).unwrap();
+    fs::write(dir.join("include/alpha.hpp"), "class Alpha {};").unwrap();
+    fs::write(dir.join("include/beta.h"), "class Beta {};").unwrap();
+
+    let config_path = dir.join("cppgo-wrap.yaml");
+    fs::write(
+        &config_path,
+        r#"
+version: 1
+input:
+  headers:
+    - include/alpha.hpp
+    - include/beta.h
+output:
+  dir: gen
+"#,
+    )
+    .unwrap();
+
+    let config = Config::load(&config_path).unwrap();
+    assert_eq!(config.input.dir, None);
+    assert_eq!(
+        config.input.headers,
+        vec![
+            dir.join("include/alpha.hpp").canonicalize().unwrap(),
+            dir.join("include/beta.h").canonicalize().unwrap(),
+        ]
+    );
+    assert_eq!(config.discovered_headers().unwrap(), config.input.headers);
+}
+
+#[test]
+fn headers_only_single_header_derives_output_filenames() {
+    let dir = temp_test_dir("headers_single_output_defaults");
+    fs::create_dir_all(dir.join("include")).unwrap();
+    fs::write(dir.join("include/WidgetThing.hpp"), "class WidgetThing {};").unwrap();
+
+    let config_path = dir.join("cppgo-wrap.yaml");
+    fs::write(
+        &config_path,
+        r#"
+version: 1
+input:
+  headers:
+    - include/WidgetThing.hpp
+output:
+  dir: gen
+"#,
+    )
+    .unwrap();
+
+    let config = Config::load(&config_path).unwrap();
+    assert_eq!(config.output.header, "widget_thing_wrapper.h");
+    assert_eq!(config.output.source, "widget_thing_wrapper.cpp");
+    assert_eq!(config.output.ir, "widget_thing_wrapper.ir.yaml");
+}
+
+#[test]
+fn rejects_config_with_dir_and_headers() {
+    let dir = temp_test_dir("dir_and_headers");
+    fs::create_dir_all(dir.join("include")).unwrap();
+    fs::write(dir.join("include/foo.hpp"), "int foo();").unwrap();
+
+    let config_path = dir.join("cppgo-wrap.yaml");
+    fs::write(
+        &config_path,
+        r#"
+version: 1
+input:
+  dir: include
+  headers:
+    - include/foo.hpp
+output:
+  dir: gen
+"#,
+    )
+    .unwrap();
+
+    let error = format!("{:#}", Config::load(&config_path).unwrap_err());
+    assert!(error.contains("config.input.dir and config.input.headers are mutually exclusive"));
+}
+
+#[test]
+fn rejects_missing_input_header() {
+    let dir = temp_test_dir("missing_header");
+
+    let config_path = dir.join("cppgo-wrap.yaml");
+    fs::write(
+        &config_path,
+        r#"
+version: 1
+input:
+  headers:
+    - include/missing.hpp
+output:
+  dir: gen
+"#,
+    )
+    .unwrap();
+
+    let error = format!("{:#}", Config::load(&config_path).unwrap_err());
+    assert!(error.contains("input.headers entry not found"));
+}
+
+#[test]
+fn rejects_unsupported_input_header_extension() {
+    let dir = temp_test_dir("unsupported_header_extension");
+    fs::create_dir_all(dir.join("include")).unwrap();
+    fs::write(dir.join("include/foo.txt"), "class Foo {};").unwrap();
+
+    let config_path = dir.join("cppgo-wrap.yaml");
+    fs::write(
+        &config_path,
+        r#"
+version: 1
+input:
+  headers:
+    - include/foo.txt
+output:
+  dir: gen
+"#,
+    )
+    .unwrap();
+
+    let error = format!("{:#}", Config::load(&config_path).unwrap_err());
+    assert!(error.contains("input.headers entry must be a supported header"));
+}
+
+#[test]
+fn rejects_duplicate_input_headers_after_canonicalization() {
+    let dir = temp_test_dir("duplicate_headers");
+    fs::create_dir_all(dir.join("include")).unwrap();
+    fs::write(dir.join("include/foo.hpp"), "int foo();").unwrap();
+
+    let config_path = dir.join("cppgo-wrap.yaml");
+    fs::write(
+        &config_path,
+        r#"
+version: 1
+input:
+  headers:
+    - include/foo.hpp
+    - include/../include/foo.hpp
+output:
+  dir: gen
+  header: custom_wrapper.h
+  source: custom_wrapper.cpp
+  ir: custom_wrapper.ir.yaml
+"#,
+    )
+    .unwrap();
+
+    let error = format!("{:#}", Config::load(&config_path).unwrap_err());
+    assert!(error.contains("input.headers entry is duplicated"));
 }
 
 #[test]
