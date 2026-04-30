@@ -1,7 +1,7 @@
 version: 1
 module: cgowrap
 source_headers:
-- /home/overthinker/project/cgo-gen/examples/03-cpp-inventory/input/inventory_service.hpp
+- /home/overthinker/project/gogen/examples/03-cpp-inventory/input/inventory_service.hpp
 records:
 - cpp_type: InventoryService
   handle_name: InventoryServiceHandle

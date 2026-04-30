@@ -1,7 +1,7 @@
 version: 1
 module: cgowrap
 source_headers:
-- /home/overthinker/project/cgo-gen/examples/05-headers-list/input/selected_widget.hpp
+- /home/overthinker/project/gogen/examples/05-headers-list/input/selected_widget.hpp
 records:
 - cpp_type: SelectedWidget
   handle_name: SelectedWidgetHandle

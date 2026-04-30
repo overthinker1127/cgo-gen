@@ -1,7 +1,7 @@
 version: 1
 module: cgowrap
 source_headers:
-- /home/overthinker/project/cgo-gen/examples/05-headers-list/input/selected_counter.hpp
+- /home/overthinker/project/gogen/examples/05-headers-list/input/selected_counter.hpp
 records:
 - cpp_type: SelectedCounter
   handle_name: SelectedCounterHandle
