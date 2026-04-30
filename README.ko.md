@@ -15,9 +15,8 @@
 현재 저장소에서 실제로 유지되는 가장 짧은 흐름은 예제 하나를 그대로 돌려보는 것입니다.
 
 ```bash
-cargo run --bin cgo-gen -- check --config examples/simple-go/config.yaml
-cargo run --bin cgo-gen -- generate --config examples/simple-go/config.yaml --dump-ir
-make -C examples/simple-go run
+cargo run --bin cgo-gen -- check --config examples/01-c-library/config.yaml
+cargo run --bin cgo-gen -- generate --config examples/01-c-library/config.yaml --dump-ir
 ```
 
 이 흐름은 저장소의 현재 지원 경로를 그대로 보여줍니다.
@@ -26,7 +25,7 @@ make -C examples/simple-go run
 2. `libclang`으로 헤더 파싱
 3. 선언을 normalized IR로 정규화
 4. `output.dir` 아래에 wrapper 파일 생성
-5. 생성된 Go 패키지를 빌드하거나 소비
+5. 커밋된 `.h`, `.cpp`, `.go`, `.ir.yaml` 생성 결과 확인
 
 ## 요구사항
 
@@ -50,6 +49,21 @@ make -C examples/simple-go run
 - macOS
   - Homebrew: `brew install llvm`
   - MacPorts: `port install clang`
+  - Homebrew LLVM은 `libclang.dylib`를 `$(brew --prefix llvm)/lib` 아래에 설치합니다.
+    테스트 바이너리가 `libclang.dylib`를 로드하지 못하면 아래처럼 실행합니다.
+    ```bash
+    DYLD_LIBRARY_PATH="$(brew --prefix llvm)/lib" cargo test
+    ```
+  - `xcode-select -p`가 오래됐거나 잘못된 Xcode 경로를 가리키면 경로를 고칩니다.
+    ```bash
+    sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
+    ```
+    sudo 없이 명령 단위로만 우회하려면 아래처럼 실행합니다.
+    ```bash
+    DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
+      DYLD_LIBRARY_PATH="$(brew --prefix llvm)/lib" \
+      cargo test --test overload_collisions
+    ```
 - Debian/Ubuntu 계열
   - `apt install libclang-dev`
   - 로컬에서 Clang CLI도 같이 써야 하면 `clang` 패키지도 설치하는 편이 좋습니다
@@ -191,22 +205,31 @@ cgo-gen generate --config path/to/config.yaml --go-module example.com/acme/foo
 
 ## 예제
 
-유지되는 예제:
+작게 시작해서 점진적으로 넓히는 예제입니다.
 
-- [`examples/simple-go`](./examples/simple-go): 가장 작은 end-to-end free-function 흐름
-- [`examples/simple-go-struct`](./examples/simple-go-struct): handle-backed model / facade 흐름
-
-자주 쓰는 명령:
+- [`examples/01-c-library`](./examples/01-c-library): C 스타일 free function
+- [`examples/02-cpp-class`](./examples/02-cpp-class): C++ class와 free function
+- [`examples/03-cpp-inventory`](./examples/03-cpp-inventory): service가 item reference를 채우는 두 개의 C++ header 예제
+- [`examples/04-go-module`](./examples/04-go-module): `--go-module`을 붙인 생성 결과 예제
 
 ```bash
-make -C examples/simple-go gen
-make -C examples/simple-go build
-make -C examples/simple-go run
-
-make -C examples/simple-go-struct gen
-make -C examples/simple-go-struct build
-make -C examples/simple-go-struct run
+cargo run --bin cgo-gen -- check --config examples/01-c-library/config.yaml
+cargo run --bin cgo-gen -- generate --config examples/01-c-library/config.yaml --dump-ir
+cargo run --bin cgo-gen -- check --config examples/02-cpp-class/config.yaml
+cargo run --bin cgo-gen -- generate --config examples/02-cpp-class/config.yaml --dump-ir
+cargo run --bin cgo-gen -- check --config examples/03-cpp-inventory/config.yaml
+cargo run --bin cgo-gen -- generate --config examples/03-cpp-inventory/config.yaml --dump-ir
+cargo run --bin cgo-gen -- check --config examples/04-go-module/config.yaml
+cargo run --bin cgo-gen -- generate --config examples/04-go-module/config.yaml --dump-ir --go-module example.com/cgo-gen/examples/04-go-module/generated
 ```
+
+큰 라이브러리는 현재 `cgo-gen`이 `input.dir`를 재귀적으로 스캔합니다. 지금은 감쌀 대상만 담은 작은 adapter header directory를 만들고 그 경로를 `input.dir`로 지정하는 방식이 권장됩니다. 명시적인 header/function 선택 config는 이후 개선 항목입니다.
+
+### cwrap과 비교
+
+[`cwrap`](https://github.com/h12w/cwrap)은 C 라이브러리용 Go wrapper generator이고, package struct 기반 API를 사용합니다. README에는 `NamePattern`, `Excluded`, `TypeRule`, `BoolTypes` 같은 선택/커스터마이즈 필드가 나오며, 예제에는 [GMime](https://github.com/h12w/cwrap/blob/master/examples/gmime/gen_test.go) 같은 실제 라이브러리 케이스가 있습니다.
+
+`cgo-gen`은 현재 더 작은 YAML surface와 directory 전체 스캔을 사용합니다. 지금의 권장 흐름은 작은 adapter header directory에서 시작하고, `generated/*.ir.yaml`을 확인한 뒤 노출 범위를 의도적으로 넓히는 것입니다.
 
 ## 현재 지원 범위
 

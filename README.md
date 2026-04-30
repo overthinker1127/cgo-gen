@@ -15,9 +15,8 @@ It is designed for controlled C/C++ header surfaces, not for arbitrary modern C+
 If you just want to see the current workflow end to end, use the checked-in example:
 
 ```bash
-cargo run --bin cgo-gen -- check --config examples/simple-go/config.yaml
-cargo run --bin cgo-gen -- generate --config examples/simple-go/config.yaml --dump-ir
-make -C examples/simple-go run
+cargo run --bin cgo-gen -- check --config examples/01-c-library/config.yaml
+cargo run --bin cgo-gen -- generate --config examples/01-c-library/config.yaml --dump-ir
 ```
 
 That path exercises the actual supported flow in this repository:
@@ -26,7 +25,7 @@ That path exercises the actual supported flow in this repository:
 2. parse headers with `libclang`
 3. normalize declarations into IR
 4. generate wrapper files into `output.dir`
-5. build or consume the generated Go package
+5. inspect the committed generated `.h`, `.cpp`, `.go`, and `.ir.yaml` files
 
 ## Requirements
 
@@ -50,6 +49,21 @@ Typical install paths:
 - macOS
   - Homebrew: `brew install llvm`
   - MacPorts: `port install clang`
+  - Homebrew LLVM installs `libclang.dylib` under `$(brew --prefix llvm)/lib`.
+    If test binaries cannot load `libclang.dylib`, run tests with:
+    ```bash
+    DYLD_LIBRARY_PATH="$(brew --prefix llvm)/lib" cargo test
+    ```
+  - If `xcode-select -p` points at a stale or misspelled Xcode path, either fix it:
+    ```bash
+    sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
+    ```
+    or override it per command:
+    ```bash
+    DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
+      DYLD_LIBRARY_PATH="$(brew --prefix llvm)/lib" \
+      cargo test --test overload_collisions
+    ```
 - Debian/Ubuntu
   - `apt install libclang-dev`
   - install `clang` as well if you need the full Clang CLI locally
@@ -189,22 +203,31 @@ Important caveats:
 
 ## Examples
 
-Maintained examples:
+Start small, then expand:
 
-- [`examples/simple-go`](./examples/simple-go): smallest end-to-end free-function flow
-- [`examples/simple-go-struct`](./examples/simple-go-struct): handle-backed model and facade flow
-
-Useful commands:
+- [`examples/01-c-library`](./examples/01-c-library): C-style free functions
+- [`examples/02-cpp-class`](./examples/02-cpp-class): C++ class plus a free function
+- [`examples/03-cpp-inventory`](./examples/03-cpp-inventory): two C++ headers where a service writes into an item by reference
+- [`examples/04-go-module`](./examples/04-go-module): generated output with `--go-module`
 
 ```bash
-make -C examples/simple-go gen
-make -C examples/simple-go build
-make -C examples/simple-go run
-
-make -C examples/simple-go-struct gen
-make -C examples/simple-go-struct build
-make -C examples/simple-go-struct run
+cargo run --bin cgo-gen -- check --config examples/01-c-library/config.yaml
+cargo run --bin cgo-gen -- generate --config examples/01-c-library/config.yaml --dump-ir
+cargo run --bin cgo-gen -- check --config examples/02-cpp-class/config.yaml
+cargo run --bin cgo-gen -- generate --config examples/02-cpp-class/config.yaml --dump-ir
+cargo run --bin cgo-gen -- check --config examples/03-cpp-inventory/config.yaml
+cargo run --bin cgo-gen -- generate --config examples/03-cpp-inventory/config.yaml --dump-ir
+cargo run --bin cgo-gen -- check --config examples/04-go-module/config.yaml
+cargo run --bin cgo-gen -- generate --config examples/04-go-module/config.yaml --dump-ir --go-module example.com/cgo-gen/examples/04-go-module/generated
 ```
+
+For large libraries, `cgo-gen` currently scans `input.dir` recursively. Put the small header surface you want to wrap in an adapter directory and point `input.dir` there. Explicit header/function selection is planned as a future config improvement.
+
+### Compared With cwrap
+
+[`cwrap`](https://github.com/h12w/cwrap) is a Go wrapper generator for C libraries with a broader package-struct API. Its README shows selection/customization fields such as `NamePattern`, `Excluded`, `TypeRule`, and `BoolTypes`, and its examples include real-library cases such as [GMime](https://github.com/h12w/cwrap/blob/master/examples/gmime/gen_test.go).
+
+`cgo-gen` currently uses a smaller YAML surface and whole-directory scanning. The intended workflow today is to start with a small adapter header directory, inspect `generated/*.ir.yaml`, and then expand the exposed surface deliberately.
 
 ## Supported Today
 
