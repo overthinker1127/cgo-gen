@@ -50,7 +50,7 @@ input:
 output:
   dir: out
 "#,
-            project_root.join("examples/simple-cpp/include").display()
+            project_root.join("examples/02-cpp-class/input").display()
         ),
     )
     .unwrap();
@@ -73,16 +73,16 @@ fn generated_wrapper_compiles_and_runs_against_sample_cpp_library() {
             r#"
         #include "{}"
         int main() {{
-            fooBarHandle* bar = cgowrap_foo_Bar_new(7);
-            if (bar == nullptr) return 10;
-            if (cgowrap_foo_add(1, 2) != 3) return 11;
-            if (cgowrap_foo_Bar_value(bar) != 7) return 12;
-            cgowrap_foo_Bar_set_value(bar, 9);
-            if (cgowrap_foo_Bar_value(bar) != 9) return 13;
-            char* name = cgowrap_foo_Bar_name(bar);
+            metricsCounterHandle* counter = cgowrap_metrics_Counter_new(7);
+            if (counter == nullptr) return 10;
+            if (cgowrap_metrics_clamp_to_zero(-1) != 0) return 11;
+            if (cgowrap_metrics_Counter_value(counter) != 7) return 12;
+            cgowrap_metrics_Counter_increment(counter, 2);
+            if (cgowrap_metrics_Counter_value(counter) != 9) return 13;
+            char* name = cgowrap_metrics_Counter_label(counter);
             if (name == nullptr) return 14;
             cgowrap_string_free(name);
-            cgowrap_foo_Bar_delete(bar);
+            cgowrap_metrics_Counter_delete(counter);
             return 0;
         }}
         "#,
@@ -98,12 +98,12 @@ fn generated_wrapper_compiles_and_runs_against_sample_cpp_library() {
         .current_dir(&project_root)
         .arg("-std=c++17")
         .arg(config.output_dir().join(&config.output.source))
-        .arg(project_root.join("examples/simple-cpp/src/foo.cpp"))
+        .arg(project_root.join("examples/02-cpp-class/input/counter.cpp"))
         .arg(&smoke_cpp)
         .arg("-I")
         .arg(config.output_dir())
         .arg("-I")
-        .arg(project_root.join("examples/simple-cpp/include"))
+        .arg(project_root.join("examples/02-cpp-class/input"))
         .arg("-o")
         .arg(&binary)
         .status()
