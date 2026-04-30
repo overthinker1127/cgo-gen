@@ -1,0 +1,69 @@
+version: 1
+module: cgowrap
+source_headers:
+- /home/overthinker/project/cgo-gen/examples/01-c-library/input/calculator.h
+records: []
+opaque_types: []
+functions:
+- name: cgowrap_calculator_add
+  kind: function
+  cpp_name: calculator_add
+  returns:
+    kind: primitive
+    cpp_type: int
+    c_type: int
+  params:
+  - name: lhs
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+  - name: rhs
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+- name: cgowrap_calculator_scale
+  kind: function
+  cpp_name: calculator_scale
+  returns:
+    kind: primitive
+    cpp_type: int
+    c_type: int
+  params:
+  - name: value
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+  - name: factor
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+- name: cgowrap_calculator_subtract
+  kind: function
+  cpp_name: calculator_subtract
+  returns:
+    kind: primitive
+    cpp_type: int
+    c_type: int
+  params:
+  - name: lhs
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+  - name: rhs
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+enums: []
+constants: []
+callbacks: []
+support:
+  parser_backend: libclang
+  notes:
+  - Parsed with clang AST and normalized into a conservative C ABI IR.
+  - v1 intentionally rejects unsupported C++ constructs during type normalization.

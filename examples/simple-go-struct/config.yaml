@@ -1,7 +1,0 @@
-version: 1
-
-input:
-  dir: cpp
-
-output:
-  dir: pkg/demo

@@ -1,0 +1,105 @@
+version: 1
+module: cgowrap
+source_headers:
+- /home/overthinker/project/cgo-gen/examples/03-cpp-inventory/input/inventory_service.hpp
+records:
+- cpp_type: InventoryService
+  handle_name: InventoryServiceHandle
+  kind: class
+opaque_types:
+- name: InventoryServiceHandle
+  cpp_type: InventoryService
+- name: InventoryItemHandle
+  cpp_type: InventoryItem
+functions:
+- name: cgowrap_InventoryService_new
+  kind: constructor
+  cpp_name: InventoryService
+  method_of: InventoryServiceHandle
+  owner_cpp_type: InventoryService
+  returns:
+    kind: opaque
+    cpp_type: InventoryService
+    c_type: InventoryServiceHandle*
+    handle: InventoryServiceHandle
+  params: []
+- name: cgowrap_InventoryService_delete
+  kind: destructor
+  cpp_name: ~InventoryService
+  method_of: InventoryServiceHandle
+  owner_cpp_type: InventoryService
+  returns:
+    kind: void
+    cpp_type: void
+    c_type: void
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: InventoryService*
+      c_type: InventoryServiceHandle*
+      handle: InventoryServiceHandle
+- name: cgowrap_InventoryService_LoadItem
+  kind: method
+  cpp_name: InventoryService::LoadItem
+  method_of: InventoryServiceHandle
+  owner_cpp_type: InventoryService
+  is_const: true
+  returns:
+    kind: primitive
+    cpp_type: bool
+    c_type: bool
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: const InventoryService*
+      c_type: const InventoryServiceHandle*
+      handle: InventoryServiceHandle
+  - name: id
+    ty:
+      kind: primitive
+      cpp_type: int32_t
+      c_type: int
+  - name: out
+    ty:
+      kind: model_reference
+      cpp_type: InventoryItem&
+      c_type: InventoryItemHandle*
+      handle: InventoryItemHandle
+- name: cgowrap_InventoryService_NextItem
+  kind: method
+  cpp_name: InventoryService::NextItem
+  method_of: InventoryServiceHandle
+  owner_cpp_type: InventoryService
+  is_const: true
+  returns:
+    kind: primitive
+    cpp_type: bool
+    c_type: bool
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: const InventoryService*
+      c_type: const InventoryServiceHandle*
+      handle: InventoryServiceHandle
+  - name: cursor
+    ty:
+      kind: reference
+      cpp_type: int32_t&
+      c_type: int32_t*
+  - name: out
+    ty:
+      kind: model_reference
+      cpp_type: InventoryItem&
+      c_type: InventoryItemHandle*
+      handle: InventoryItemHandle
+enums: []
+constants: []
+callbacks: []
+support:
+  parser_backend: libclang
+  notes:
+  - Parsed with clang AST and normalized into a conservative C ABI IR.
+  - v1 intentionally rejects unsupported C++ constructs during type normalization.

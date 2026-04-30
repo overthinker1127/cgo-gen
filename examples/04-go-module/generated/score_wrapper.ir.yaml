@@ -1,0 +1,51 @@
+version: 1
+module: cgowrap
+source_headers:
+- /home/overthinker/project/cgo-gen/examples/04-go-module/input/score.h
+records: []
+opaque_types: []
+functions:
+- name: cgowrap_score_delta
+  kind: function
+  cpp_name: score_delta
+  returns:
+    kind: primitive
+    cpp_type: int
+    c_type: int
+  params:
+  - name: current
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+  - name: previous
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+- name: cgowrap_score_total
+  kind: function
+  cpp_name: score_total
+  returns:
+    kind: primitive
+    cpp_type: int
+    c_type: int
+  params:
+  - name: wins
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+  - name: draws
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+enums: []
+constants: []
+callbacks: []
+support:
+  parser_backend: libclang
+  notes:
+  - Parsed with clang AST and normalized into a conservative C ABI IR.
+  - v1 intentionally rejects unsupported C++ constructs during type normalization.

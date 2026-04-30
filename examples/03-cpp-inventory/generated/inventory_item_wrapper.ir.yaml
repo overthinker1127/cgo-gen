@@ -1,0 +1,164 @@
+version: 1
+module: cgowrap
+source_headers:
+- /home/overthinker/project/cgo-gen/examples/03-cpp-inventory/input/inventory_item.hpp
+records:
+- cpp_type: InventoryItem
+  handle_name: InventoryItemHandle
+  kind: class
+opaque_types:
+- name: InventoryItemHandle
+  cpp_type: InventoryItem
+functions:
+- name: cgowrap_InventoryItem_new
+  kind: constructor
+  cpp_name: InventoryItem
+  method_of: InventoryItemHandle
+  owner_cpp_type: InventoryItem
+  returns:
+    kind: opaque
+    cpp_type: InventoryItem
+    c_type: InventoryItemHandle*
+    handle: InventoryItemHandle
+  params: []
+- name: cgowrap_InventoryItem_delete
+  kind: destructor
+  cpp_name: ~InventoryItem
+  method_of: InventoryItemHandle
+  owner_cpp_type: InventoryItem
+  returns:
+    kind: void
+    cpp_type: void
+    c_type: void
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: InventoryItem*
+      c_type: InventoryItemHandle*
+      handle: InventoryItemHandle
+- name: cgowrap_InventoryItem_Id
+  kind: method
+  cpp_name: InventoryItem::Id
+  method_of: InventoryItemHandle
+  owner_cpp_type: InventoryItem
+  is_const: true
+  returns:
+    kind: primitive
+    cpp_type: int32_t
+    c_type: int
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: const InventoryItem*
+      c_type: const InventoryItemHandle*
+      handle: InventoryItemHandle
+- name: cgowrap_InventoryItem_SetId
+  kind: method
+  cpp_name: InventoryItem::SetId
+  method_of: InventoryItemHandle
+  owner_cpp_type: InventoryItem
+  is_const: false
+  returns:
+    kind: void
+    cpp_type: void
+    c_type: void
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: InventoryItem*
+      c_type: InventoryItemHandle*
+      handle: InventoryItemHandle
+  - name: id
+    ty:
+      kind: primitive
+      cpp_type: int32_t
+      c_type: int
+- name: cgowrap_InventoryItem_Quantity
+  kind: method
+  cpp_name: InventoryItem::Quantity
+  method_of: InventoryItemHandle
+  owner_cpp_type: InventoryItem
+  is_const: true
+  returns:
+    kind: primitive
+    cpp_type: int32_t
+    c_type: int
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: const InventoryItem*
+      c_type: const InventoryItemHandle*
+      handle: InventoryItemHandle
+- name: cgowrap_InventoryItem_SetQuantity
+  kind: method
+  cpp_name: InventoryItem::SetQuantity
+  method_of: InventoryItemHandle
+  owner_cpp_type: InventoryItem
+  is_const: false
+  returns:
+    kind: void
+    cpp_type: void
+    c_type: void
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: InventoryItem*
+      c_type: InventoryItemHandle*
+      handle: InventoryItemHandle
+  - name: quantity
+    ty:
+      kind: primitive
+      cpp_type: int32_t
+      c_type: int
+- name: cgowrap_InventoryItem_Name
+  kind: method
+  cpp_name: InventoryItem::Name
+  method_of: InventoryItemHandle
+  owner_cpp_type: InventoryItem
+  is_const: true
+  returns:
+    kind: c_string
+    cpp_type: const char*
+    c_type: const char*
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: const InventoryItem*
+      c_type: const InventoryItemHandle*
+      handle: InventoryItemHandle
+- name: cgowrap_InventoryItem_SetName
+  kind: method
+  cpp_name: InventoryItem::SetName
+  method_of: InventoryItemHandle
+  owner_cpp_type: InventoryItem
+  is_const: false
+  returns:
+    kind: void
+    cpp_type: void
+    c_type: void
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: InventoryItem*
+      c_type: InventoryItemHandle*
+      handle: InventoryItemHandle
+  - name: name
+    ty:
+      kind: c_string
+      cpp_type: const char*
+      c_type: const char*
+enums: []
+constants: []
+callbacks: []
+support:
+  parser_backend: libclang
+  notes:
+  - Parsed with clang AST and normalized into a conservative C ABI IR.
+  - v1 intentionally rejects unsupported C++ constructs during type normalization.

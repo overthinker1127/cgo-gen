@@ -1,0 +1,7 @@
+version: 1
+
+input:
+  dir: input
+
+output:
+  dir: generated

@@ -1,0 +1,121 @@
+version: 1
+module: cgowrap
+source_headers:
+- /home/overthinker/project/cgo-gen/examples/02-cpp-class/input/counter.hpp
+records:
+- cpp_type: metrics::Counter
+  handle_name: metricsCounterHandle
+  kind: class
+opaque_types:
+- name: metricsCounterHandle
+  cpp_type: metrics::Counter
+functions:
+- name: cgowrap_metrics_Counter_new
+  kind: constructor
+  cpp_name: metrics::Counter
+  method_of: metricsCounterHandle
+  owner_cpp_type: metrics::Counter
+  returns:
+    kind: opaque
+    cpp_type: metrics::Counter
+    c_type: metricsCounterHandle*
+    handle: metricsCounterHandle
+  params:
+  - name: initial_value
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+- name: cgowrap_metrics_Counter_delete
+  kind: destructor
+  cpp_name: ~metrics::Counter
+  method_of: metricsCounterHandle
+  owner_cpp_type: metrics::Counter
+  returns:
+    kind: void
+    cpp_type: void
+    c_type: void
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: metrics::Counter*
+      c_type: metricsCounterHandle*
+      handle: metricsCounterHandle
+- name: cgowrap_metrics_Counter_value
+  kind: method
+  cpp_name: metrics::Counter::value
+  method_of: metricsCounterHandle
+  owner_cpp_type: metrics::Counter
+  is_const: true
+  returns:
+    kind: primitive
+    cpp_type: int
+    c_type: int
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: const metrics::Counter*
+      c_type: const metricsCounterHandle*
+      handle: metricsCounterHandle
+- name: cgowrap_metrics_Counter_increment
+  kind: method
+  cpp_name: metrics::Counter::increment
+  method_of: metricsCounterHandle
+  owner_cpp_type: metrics::Counter
+  is_const: false
+  returns:
+    kind: void
+    cpp_type: void
+    c_type: void
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: metrics::Counter*
+      c_type: metricsCounterHandle*
+      handle: metricsCounterHandle
+  - name: amount
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+- name: cgowrap_metrics_Counter_label
+  kind: method
+  cpp_name: metrics::Counter::label
+  method_of: metricsCounterHandle
+  owner_cpp_type: metrics::Counter
+  is_const: true
+  returns:
+    kind: string
+    cpp_type: std::string
+    c_type: char*
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: const metrics::Counter*
+      c_type: const metricsCounterHandle*
+      handle: metricsCounterHandle
+- name: cgowrap_metrics_clamp_to_zero
+  kind: function
+  cpp_name: metrics::clamp_to_zero
+  returns:
+    kind: primitive
+    cpp_type: int
+    c_type: int
+  params:
+  - name: value
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+enums: []
+constants: []
+callbacks: []
+support:
+  parser_backend: libclang
+  notes:
+  - Parsed with clang AST and normalized into a conservative C ABI IR.
+  - v1 intentionally rejects unsupported C++ constructs during type normalization.
