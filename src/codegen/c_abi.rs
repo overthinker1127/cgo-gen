@@ -266,22 +266,22 @@ fn generate_with_opaque_ownership(
     let ir_path = ctx.output_dir().join(&ctx.output.ir);
     fs::write(
         &header_path,
-        render_header_with_owned_opaque_handles(
+        trim_trailing_blank_lines(render_header_with_owned_opaque_handles(
             &ctx,
             ir,
             native_covered_handles,
             local_owned_opaque_value_handles,
-        ),
+        )),
     )
     .with_context(|| format!("failed to write header: {}", header_path.display()))?;
     fs::write(
         &source_path,
-        render_source_with_owned_opaque_handles(
+        trim_trailing_blank_lines(render_source_with_owned_opaque_handles(
             &ctx,
             ir,
             native_covered_handles,
             local_owned_opaque_value_handles,
-        ),
+        )),
     )
     .with_context(|| format!("failed to write source: {}", source_path.display()))?;
     for go_file in facade::render_go_facade_with_owned_opaques(
@@ -298,7 +298,7 @@ fn generate_with_opaque_ownership(
             )
         })?;
         let go_path = ctx.output_dir().join(&go_file.filename);
-        fs::write(&go_path, go_file.contents)
+        fs::write(&go_path, trim_trailing_blank_lines(go_file.contents))
             .with_context(|| format!("failed to write Go wrapper: {}", go_path.display()))?;
     }
     write_go_package_metadata(&ctx)?;
@@ -308,6 +308,13 @@ fn generate_with_opaque_ownership(
             .with_context(|| format!("failed to write ir dump: {}", ir_path.display()))?;
     }
     Ok(())
+}
+
+fn trim_trailing_blank_lines(mut contents: String) -> String {
+    while contents.ends_with("\n\n") {
+        contents.pop();
+    }
+    contents
 }
 
 pub fn write_ir(path: &Path, ir: &IrModule) -> Result<()> {
