@@ -1,6 +1,6 @@
 # cgo-gen
 
-[English](./README.md)
+[English](./README.md) | [Root README](../README.md) | [日本語](./README.ja.md) | [中文](./README.zh.md)
 
 `cgo-gen`은 보수적인 C/C++ 헤더 subset을 파싱해서 아래 산출물을 만드는 Rust CLI입니다.
 
@@ -12,20 +12,20 @@
 
 ## 빠른 시작
 
-현재 저장소에서 실제로 유지되는 가장 짧은 흐름은 예제 하나를 그대로 돌려보는 것입니다.
+먼저 `check`를 실행한 뒤 같은 config로 wrapper를 생성합니다.
 
 ```bash
-cargo run --bin cgo-gen -- check --config examples/01-c-library/config.yaml
-cargo run --bin cgo-gen -- generate --config examples/01-c-library/config.yaml --dump-ir
+cgo-gen check --config path/to/config.yaml
+cgo-gen generate --config path/to/config.yaml --dump-ir
 ```
 
-이 흐름은 저장소의 현재 지원 경로를 그대로 보여줍니다.
+이 흐름은 아래 단계를 수행합니다.
 
 1. YAML config 로드
 2. `libclang`으로 헤더 파싱
 3. 선언을 normalized IR로 정규화
 4. `output.dir` 아래에 wrapper 파일 생성
-5. 커밋된 `.h`, `.cpp`, `.go`, `.ir.yaml` 생성 결과 확인
+5. 필요하면 생성된 `.ir.yaml` 파일 출력
 
 ## 요구사항
 
@@ -141,6 +141,7 @@ output:
 - 지원하지 않는 키는 로드 시점에 오류로 처리됩니다.
 - `input.dir`는 재귀적으로 스캔됩니다.
 - 생성되는 `.go`, `.h`, `.cpp`, 선택적 `.ir.yaml` 파일은 모두 `output.dir` 아래에 함께 놓입니다.
+- `output.go_version`은 생성되는 `go.mod`의 Go 버전을 제어하며 기본값은 `1.26`입니다.
 - `--go-module <module-path>`를 주면 `generate`가 `go.mod`와 `build_flags.go`도 함께 생성합니다.
 
 ## 생성 결과
@@ -169,7 +170,7 @@ cgo-gen generate --config path/to/config.yaml --go-module example.com/acme/foo
 
 이 옵션을 주면 추가로:
 
-- `module <module-path>`와 `go 1.25`가 들어간 `go.mod`
+- `module <module-path>`와 `go <output.go_version>`이 들어간 `go.mod`; 기본값은 `1.26`
 - `build_flags.go`
 
 가 생성됩니다.
@@ -203,31 +204,11 @@ cgo-gen generate --config path/to/config.yaml --go-module example.com/acme/foo
 - `input.owner`는 `WidgetFactory::Create` 같은 qualified callable name으로 매칭되며, 같은 이름의 overload가 있으면 모두 owned로 처리됩니다.
 - env 확장은 `$VAR`, `$(VAR)`, `${VAR}`만 지원합니다.
 
-## 예제
-
-작게 시작해서 점진적으로 넓히는 예제입니다.
-
-- [`examples/01-c-library`](./examples/01-c-library): C 스타일 free function
-- [`examples/02-cpp-class`](./examples/02-cpp-class): C++ class와 free function
-- [`examples/03-cpp-inventory`](./examples/03-cpp-inventory): service가 item reference를 채우는 두 개의 C++ header 예제
-- [`examples/04-go-module`](./examples/04-go-module): `--go-module`을 붙인 생성 결과 예제
-
-```bash
-cargo run --bin cgo-gen -- check --config examples/01-c-library/config.yaml
-cargo run --bin cgo-gen -- generate --config examples/01-c-library/config.yaml --dump-ir
-cargo run --bin cgo-gen -- check --config examples/02-cpp-class/config.yaml
-cargo run --bin cgo-gen -- generate --config examples/02-cpp-class/config.yaml --dump-ir
-cargo run --bin cgo-gen -- check --config examples/03-cpp-inventory/config.yaml
-cargo run --bin cgo-gen -- generate --config examples/03-cpp-inventory/config.yaml --dump-ir
-cargo run --bin cgo-gen -- check --config examples/04-go-module/config.yaml
-cargo run --bin cgo-gen -- generate --config examples/04-go-module/config.yaml --dump-ir --go-module example.com/cgo-gen/examples/04-go-module/generated
-```
-
 큰 라이브러리는 현재 `cgo-gen`이 `input.dir`를 재귀적으로 스캔합니다. 지금은 감쌀 대상만 담은 작은 adapter header directory를 만들고 그 경로를 `input.dir`로 지정하는 방식이 권장됩니다. 명시적인 header/function 선택 config는 이후 개선 항목입니다.
 
 ### cwrap과 비교
 
-[`cwrap`](https://github.com/h12w/cwrap)은 C 라이브러리용 Go wrapper generator이고, package struct 기반 API를 사용합니다. README에는 `NamePattern`, `Excluded`, `TypeRule`, `BoolTypes` 같은 선택/커스터마이즈 필드가 나오며, 예제에는 [GMime](https://github.com/h12w/cwrap/blob/master/examples/gmime/gen_test.go) 같은 실제 라이브러리 케이스가 있습니다.
+[`cwrap`](https://github.com/h12w/cwrap)은 C 라이브러리용 Go wrapper generator이고, package struct 기반 API를 사용합니다. README에는 `NamePattern`, `Excluded`, `TypeRule`, `BoolTypes` 같은 선택/커스터마이즈 필드가 나옵니다.
 
 `cgo-gen`은 현재 더 작은 YAML surface와 directory 전체 스캔을 사용합니다. 지금의 권장 흐름은 작은 adapter header directory에서 시작하고, `generated/*.ir.yaml`을 확인한 뒤 노출 범위를 의도적으로 넓히는 것입니다.
 
@@ -260,4 +241,4 @@ cargo run --bin cgo-gen -- generate --config examples/04-go-module/config.yaml -
 
 ## 라이선스
 
-[MIT](./LICENSE)
+[MIT](../LICENSE)
