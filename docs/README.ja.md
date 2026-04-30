@@ -1,6 +1,6 @@
 # cgo-gen
 
-[English](./README.md) | [Root README](../README.md) | [한국어](./README.ko.md) | [中文](./README.zh.md)
+[English](../README.md) | [한국어](./README.ko.md) | [中文](./README.zh.md)
 
 `cgo-gen` は、C/C++ ヘッダーの保守的なサブセットを解析し、次の生成物を出力する Rust CLI です。
 
@@ -135,11 +135,29 @@ output:
   dir: gen
 ```
 
+正確な entry header list だけを wrap したい場合は、`input.dir` の代わりに `input.headers` を使います。
+
+```yaml
+version: 1
+
+input:
+  headers:
+    - path/to/include/widget.hpp
+    - path/to/include/service.hpp
+  clang_args:
+    - -Ipath/to/include
+
+output:
+  dir: gen
+```
+
 主な動作:
 
 - relative path は config file の場所を基準に解決されます
 - 未対応の key は load 時に error になります
 - `input.dir` は再帰的に scan されます
+- `input.headers` は正確な file list で、`input.dir` と同時には使えません
+- list された header が include する dependency header は parse されますが、wrapper は `input.headers` に明示した file にだけ生成されます
 - 生成される `.go`, `.h`, `.cpp`, 任意の `.ir.yaml` file はすべて `output.dir` に置かれます
 - `output.go_version` は生成される `go.mod` の Go version を制御し、default は `1.26` です
 - `--go-module <module-path>` を指定すると、`generate` は `go.mod` と `build_flags.go` も出力します
@@ -187,6 +205,7 @@ cgo-gen generate --config path/to/config.yaml --go-module example.com/acme/foo
 最初から多くの knob を知る必要はありません。現在対応している主な key は次の通りです。
 
 - `input.dir`: header discovery と translation-unit discovery に使う再帰 input root
+- `input.headers`: config file の場所を基準に解決される正確な entry header list; `input.dir` とは mutually exclusive
 - `input.clang_args`: `-I...`, `-isystem...`, `-D...`, `-std=...` などの追加 libclang flags
 - `input.owner`: pointer return を owned Go wrapper として出力する qualified callable name
 - `input.ldflags`: 生成される `build_flags.go` に渡す linker flags
@@ -197,18 +216,18 @@ cgo-gen generate --config path/to/config.yaml --go-module example.com/acme/foo
 
 - multi-header generation を使う場合、`output.header`, `output.source`, `output.ir` は default のままにしてください
 - 生成される C symbol naming は source に固定されており、YAML では変更できません
-- `input.clang_args` と `input.ldflags` の relative path は config file directory を基準に解決されます
+- `input.headers`, `input.clang_args`, `input.ldflags` の relative path は config file directory を基準に解決されます
 - `input.owner` は factory method のように pointer return が実際に ownership を渡す場合だけ使ってください
 - `input.owner` は `WidgetFactory::Create` のような qualified callable name で match します。同名 overload がある場合は、すべて owned として扱われます
 - env expansion は `$VAR`, `$(VAR)`, `${VAR}` のみ対応します
 
-大きな library では、`cgo-gen` は現在 `input.dir` を再帰的に scan します。wrap したい小さな header surface を adapter directory に置き、その path を `input.dir` に指定してください。明示的な header/function selection config は今後の改善項目です。
+大きな library では、wrap したい小さな header surface を adapter directory に置いて `input.dir` に指定するか、`input.headers` で正確な entry header を指定してください。
 
 ### Compared With cwrap
 
 [`cwrap`](https://github.com/h12w/cwrap) は C library 用の Go wrapper generator で、より広い package-struct API を使います。README には `NamePattern`, `Excluded`, `TypeRule`, `BoolTypes` などの selection/customization field が示されています。
 
-`cgo-gen` は現在、より小さな YAML surface と directory 全体 scan を使います。今の意図した workflow は、小さな adapter header directory から始め、`generated/*.ir.yaml` を確認し、公開 surface を慎重に広げることです。
+`cgo-gen` は、より小さな YAML surface で recursive directory scan または明示的な entry-header list を使います。今の意図した workflow は、小さな adapter header directory または `input.headers` から始め、`generated/*.ir.yaml` を確認し、公開 surface を慎重に広げることです。
 
 ## Supported Today
 

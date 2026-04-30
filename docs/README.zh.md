@@ -1,6 +1,6 @@
 # cgo-gen
 
-[English](./README.md) | [Root README](../README.md) | [한국어](./README.ko.md) | [日本語](./README.ja.md)
+[English](../README.md) | [한국어](./README.ko.md) | [日本語](./README.ja.md)
 
 `cgo-gen` 是一个 Rust CLI，用于解析 C/C++ 头文件中较保守的子集，并生成：
 
@@ -135,11 +135,29 @@ output:
   dir: gen
 ```
 
+如果只想 wrap 精确的 entry header 列表，请用 `input.headers` 代替 `input.dir`：
+
+```yaml
+version: 1
+
+input:
+  headers:
+    - path/to/include/widget.hpp
+    - path/to/include/service.hpp
+  clang_args:
+    - -Ipath/to/include
+
+output:
+  dir: gen
+```
+
 关键行为：
 
 - relative paths 会按 config file 所在位置解析
 - unknown keys 会在 load 时被拒绝
 - `input.dir` 会被递归扫描
+- `input.headers` 是精确 file list，不能和 `input.dir` 同时使用
+- listed headers include 的 dependency headers 会参与 parse，但只会为 `input.headers` 中列出的 files 生成 wrappers
 - 生成的 `.go`, `.h`, `.cpp` 和可选 `.ir.yaml` files 都会写入 `output.dir`
 - `output.go_version` 控制生成的 `go.mod` 中的 Go version，默认值是 `1.26`
 - 设置 `--go-module <module-path>` 时，`generate` 也会写入 `go.mod` 和 `build_flags.go`
@@ -187,6 +205,7 @@ cgo-gen generate --config path/to/config.yaml --go-module example.com/acme/foo
 刚开始不需要了解很多 knobs。当前支持的核心 keys 如下：
 
 - `input.dir`: 用于 header discovery 和 translation-unit discovery 的递归 input root
+- `input.headers`: 按 config file 所在位置解析的精确 entry header list；与 `input.dir` mutually exclusive
 - `input.clang_args`: 额外的 libclang flags，例如 `-I...`, `-isystem...`, `-D...`, `-std=...`
 - `input.owner`: 其 pointer return 应生成为 owned Go wrappers 的 qualified callable names
 - `input.ldflags`: 转发到生成的 `build_flags.go` 的 linker flags
@@ -197,18 +216,18 @@ cgo-gen generate --config path/to/config.yaml --go-module example.com/acme/foo
 
 - 使用 multi-header generation 时，让 `output.header`, `output.source`, `output.ir` 保持默认值
 - 生成的 C symbol naming 固定在 source 中，不能通过 YAML 配置
-- `input.clang_args` 和 `input.ldflags` 的 relative paths 会按 config file directory 解析
+- `input.headers`, `input.clang_args`, `input.ldflags` 的 relative paths 会按 config file directory 解析
 - 只有在 pointer return 确实转移 ownership 时才使用 `input.owner`，例如返回 `new` 分配对象的 factory method
 - `input.owner` 按 `WidgetFactory::Create` 这样的 qualified callable name 匹配；如果同名 overload 存在，所有匹配 overload 都会被视为 owned
 - env expansion 只支持 `$VAR`, `$(VAR)`, `${VAR}`
 
-对于大型 library，`cgo-gen` 当前会递归扫描 `input.dir`。请把想 wrap 的小型 header surface 放到 adapter directory，并把 `input.dir` 指向那里。显式 header/function selection config 是后续改进项。
+对于大型 library，请把想 wrap 的小型 header surface 放到 adapter directory 并用 `input.dir` 指向那里，或用 `input.headers` 指定精确 entry headers。
 
 ### Compared With cwrap
 
 [`cwrap`](https://github.com/h12w/cwrap) 是一个面向 C libraries 的 Go wrapper generator，使用更宽的 package-struct API。它的 README 展示了 `NamePattern`, `Excluded`, `TypeRule`, `BoolTypes` 等 selection/customization fields。
 
-`cgo-gen` 当前使用更小的 YAML surface 和 whole-directory scanning。当前建议的 workflow 是从小型 adapter header directory 开始，检查 `generated/*.ir.yaml`，再有意扩展 exposed surface。
+`cgo-gen` 使用更小的 YAML surface，支持 recursive directory scan 或显式 entry-header list。当前建议的 workflow 是从小型 adapter header directory 或 `input.headers` 开始，检查 `generated/*.ir.yaml`，再有意扩展 exposed surface。
 
 ## Supported Today
 

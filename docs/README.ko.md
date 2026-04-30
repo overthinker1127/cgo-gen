@@ -1,6 +1,6 @@
 # cgo-gen
 
-[English](./README.md) | [Root README](../README.md) | [日本語](./README.ja.md) | [中文](./README.zh.md)
+[English](../README.md) | [日本語](./README.ja.md) | [中文](./README.zh.md)
 
 `cgo-gen`은 보수적인 C/C++ 헤더 subset을 파싱해서 아래 산출물을 만드는 Rust CLI입니다.
 
@@ -135,11 +135,29 @@ output:
   dir: gen
 ```
 
+정확한 엔트리 헤더 목록만 감싸고 싶다면 `input.dir` 대신 `input.headers`를 사용합니다.
+
+```yaml
+version: 1
+
+input:
+  headers:
+    - path/to/include/widget.hpp
+    - path/to/include/service.hpp
+  clang_args:
+    - -Ipath/to/include
+
+output:
+  dir: gen
+```
+
 핵심 동작:
 
 - 상대 경로는 config 파일 위치를 기준으로 해석됩니다.
 - 지원하지 않는 키는 로드 시점에 오류로 처리됩니다.
 - `input.dir`는 재귀적으로 스캔됩니다.
+- `input.headers`는 정확한 파일 목록이며 `input.dir`와 함께 사용할 수 없습니다.
+- 목록에 있는 헤더가 include하는 dependency header는 파싱에는 쓰이지만, wrapper는 `input.headers`에 명시된 파일에 대해서만 생성됩니다.
 - 생성되는 `.go`, `.h`, `.cpp`, 선택적 `.ir.yaml` 파일은 모두 `output.dir` 아래에 함께 놓입니다.
 - `output.go_version`은 생성되는 `go.mod`의 Go 버전을 제어하며 기본값은 `1.26`입니다.
 - `--go-module <module-path>`를 주면 `generate`가 `go.mod`와 `build_flags.go`도 함께 생성합니다.
@@ -189,6 +207,7 @@ cgo-gen generate --config path/to/config.yaml --go-module example.com/acme/foo
 처음에는 많은 옵션을 알 필요가 없습니다. 현재 지원하는 핵심 키는 아래 정도입니다.
 
 - `input.dir`: header discovery와 translation-unit discovery에 쓰이는 재귀 입력 루트
+- `input.headers`: config 파일 위치 기준으로 해석되는 정확한 엔트리 헤더 목록; `input.dir`와 상호 배타적
 - `input.clang_args`: `-I`, `-isystem`, `-D`, `-std=...` 같은 추가 libclang 인자
 - `input.owner`: pointer return을 owned Go wrapper로 강제할 qualified callable name 목록
 - `input.ldflags`: 생성되는 `build_flags.go`에 전달할 링커 플래그
@@ -199,18 +218,18 @@ cgo-gen generate --config path/to/config.yaml --go-module example.com/acme/foo
 
 - multi-header generation에서는 `output.header`, `output.source`, `output.ir`를 기본값으로 두는 편이 안전합니다.
 - 생성되는 C symbol naming은 코드에 고정돼 있으며 YAML로 바꿀 수 없습니다.
-- `input.clang_args`와 `input.ldflags`의 상대 경로는 config 파일 위치 기준으로 해석됩니다.
+- `input.headers`, `input.clang_args`, `input.ldflags`의 상대 경로는 config 파일 위치 기준으로 해석됩니다.
 - `input.owner`는 factory method처럼 pointer return이 실제로 ownership을 넘기는 경우에만 사용해야 합니다.
 - `input.owner`는 `WidgetFactory::Create` 같은 qualified callable name으로 매칭되며, 같은 이름의 overload가 있으면 모두 owned로 처리됩니다.
 - env 확장은 `$VAR`, `$(VAR)`, `${VAR}`만 지원합니다.
 
-큰 라이브러리는 현재 `cgo-gen`이 `input.dir`를 재귀적으로 스캔합니다. 지금은 감쌀 대상만 담은 작은 adapter header directory를 만들고 그 경로를 `input.dir`로 지정하는 방식이 권장됩니다. 명시적인 header/function 선택 config는 이후 개선 항목입니다.
+큰 라이브러리는 감쌀 대상만 담은 작은 adapter header directory를 만들고 `input.dir`로 지정하거나, `input.headers`로 정확한 엔트리 헤더를 지정하는 방식이 권장됩니다.
 
 ### cwrap과 비교
 
 [`cwrap`](https://github.com/h12w/cwrap)은 C 라이브러리용 Go wrapper generator이고, package struct 기반 API를 사용합니다. README에는 `NamePattern`, `Excluded`, `TypeRule`, `BoolTypes` 같은 선택/커스터마이즈 필드가 나옵니다.
 
-`cgo-gen`은 현재 더 작은 YAML surface와 directory 전체 스캔을 사용합니다. 지금의 권장 흐름은 작은 adapter header directory에서 시작하고, `generated/*.ir.yaml`을 확인한 뒤 노출 범위를 의도적으로 넓히는 것입니다.
+`cgo-gen`은 더 작은 YAML surface에서 재귀 directory scan 또는 명시적 entry-header list를 사용합니다. 지금의 권장 흐름은 작은 adapter header directory나 `input.headers`에서 시작하고, `generated/*.ir.yaml`을 확인한 뒤 노출 범위를 의도적으로 넓히는 것입니다.
 
 ## 현재 지원 범위
 
