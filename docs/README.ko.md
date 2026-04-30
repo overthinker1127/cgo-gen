@@ -225,12 +225,6 @@ cgo-gen generate --config path/to/config.yaml --go-module example.com/acme/foo
 
 큰 라이브러리는 감쌀 대상만 담은 작은 adapter header directory를 만들고 `input.dir`로 지정하거나, `input.headers`로 정확한 엔트리 헤더를 지정하는 방식이 권장됩니다.
 
-### cwrap과 비교
-
-[`cwrap`](https://github.com/h12w/cwrap)은 C 라이브러리용 Go wrapper generator이고, package struct 기반 API를 사용합니다. README에는 `NamePattern`, `Excluded`, `TypeRule`, `BoolTypes` 같은 선택/커스터마이즈 필드가 나옵니다.
-
-`cgo-gen`은 더 작은 YAML surface에서 재귀 directory scan 또는 명시적 entry-header list를 사용합니다. 지금의 권장 흐름은 작은 adapter header directory나 `input.headers`에서 시작하고, `generated/*.ir.yaml`을 확인한 뒤 노출 범위를 의도적으로 넓히는 것입니다.
-
 ## 현재 지원 범위
 
 - free function

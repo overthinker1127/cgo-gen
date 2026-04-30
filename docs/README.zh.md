@@ -223,12 +223,6 @@ cgo-gen generate --config path/to/config.yaml --go-module example.com/acme/foo
 
 对于大型 library，请把想 wrap 的小型 header surface 放到 adapter directory 并用 `input.dir` 指向那里，或用 `input.headers` 指定精确 entry headers。
 
-### Compared With cwrap
-
-[`cwrap`](https://github.com/h12w/cwrap) 是一个面向 C libraries 的 Go wrapper generator，使用更宽的 package-struct API。它的 README 展示了 `NamePattern`, `Excluded`, `TypeRule`, `BoolTypes` 等 selection/customization fields。
-
-`cgo-gen` 使用更小的 YAML surface，支持 recursive directory scan 或显式 entry-header list。当前建议的 workflow 是从小型 adapter header directory 或 `input.headers` 开始，检查 `generated/*.ir.yaml`，再有意扩展 exposed surface。
-
 ## Supported Today
 
 - free functions

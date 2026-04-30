@@ -223,12 +223,6 @@ Important caveats:
 
 For large libraries, either put the small header surface you want to wrap in an adapter directory and point `input.dir` there, or use `input.headers` to name the exact entry headers.
 
-### Compared With cwrap
-
-[`cwrap`](https://github.com/h12w/cwrap) is a Go wrapper generator for C libraries with a broader package-struct API. Its README shows selection/customization fields such as `NamePattern`, `Excluded`, `TypeRule`, and `BoolTypes`.
-
-`cgo-gen` currently uses a smaller YAML surface with recursive directory scanning or an explicit entry-header list. The intended workflow today is to start with a small adapter header directory or `input.headers`, inspect `generated/*.ir.yaml`, and then expand the exposed surface deliberately.
-
 ## Supported Today
 
 - free functions
