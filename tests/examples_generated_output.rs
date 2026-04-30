@@ -102,4 +102,24 @@ fn checked_in_example_generated_outputs_are_current() {
             "selected_counter_wrapper.ir.yaml",
         ],
     );
+    assert_generated_matches(
+        "examples/06-owner-return",
+        None,
+        &[
+            "session_factory_wrapper.h",
+            "session_factory_wrapper.cpp",
+            "session_factory_wrapper.go",
+            "session_factory_wrapper.ir.yaml",
+        ],
+    );
+    assert_generated_matches(
+        "examples/07-enums",
+        None,
+        &[
+            "device_controller_wrapper.h",
+            "device_controller_wrapper.cpp",
+            "device_controller_wrapper.go",
+            "device_controller_wrapper.ir.yaml",
+        ],
+    );
 }

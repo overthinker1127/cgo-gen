@@ -1,0 +1,164 @@
+version: 1
+module: cgowrap
+source_headers:
+- /home/overthinker/project/gogen/examples/06-owner-return/input/session_factory.hpp
+records:
+- cpp_type: ManagedSession
+  handle_name: ManagedSessionHandle
+  kind: class
+- cpp_type: SessionFactory
+  handle_name: SessionFactoryHandle
+  kind: class
+opaque_types:
+- name: ManagedSessionHandle
+  cpp_type: ManagedSession
+- name: SessionFactoryHandle
+  cpp_type: SessionFactory
+functions:
+- name: cgowrap_ManagedSession_new
+  kind: constructor
+  cpp_name: ManagedSession
+  method_of: ManagedSessionHandle
+  owner_cpp_type: ManagedSession
+  returns:
+    kind: opaque
+    cpp_type: ManagedSession
+    c_type: ManagedSessionHandle*
+    handle: ManagedSessionHandle
+  params:
+  - name: id
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+- name: cgowrap_ManagedSession_delete
+  kind: destructor
+  cpp_name: ~ManagedSession
+  method_of: ManagedSessionHandle
+  owner_cpp_type: ManagedSession
+  returns:
+    kind: void
+    cpp_type: void
+    c_type: void
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: ManagedSession*
+      c_type: ManagedSessionHandle*
+      handle: ManagedSessionHandle
+- name: cgowrap_ManagedSession_Id
+  kind: method
+  cpp_name: ManagedSession::Id
+  method_of: ManagedSessionHandle
+  owner_cpp_type: ManagedSession
+  is_const: true
+  returns:
+    kind: primitive
+    cpp_type: int
+    c_type: int
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: const ManagedSession*
+      c_type: const ManagedSessionHandle*
+      handle: ManagedSessionHandle
+- name: cgowrap_ManagedSession_Reset
+  kind: method
+  cpp_name: ManagedSession::Reset
+  method_of: ManagedSessionHandle
+  owner_cpp_type: ManagedSession
+  is_const: false
+  returns:
+    kind: void
+    cpp_type: void
+    c_type: void
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: ManagedSession*
+      c_type: ManagedSessionHandle*
+      handle: ManagedSessionHandle
+  - name: id
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+- name: cgowrap_SessionFactory_new
+  kind: constructor
+  cpp_name: SessionFactory
+  method_of: SessionFactoryHandle
+  owner_cpp_type: SessionFactory
+  returns:
+    kind: opaque
+    cpp_type: SessionFactory
+    c_type: SessionFactoryHandle*
+    handle: SessionFactoryHandle
+  params: []
+- name: cgowrap_SessionFactory_delete
+  kind: destructor
+  cpp_name: ~SessionFactory
+  method_of: SessionFactoryHandle
+  owner_cpp_type: SessionFactory
+  returns:
+    kind: void
+    cpp_type: void
+    c_type: void
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: SessionFactory*
+      c_type: SessionFactoryHandle*
+      handle: SessionFactoryHandle
+- name: cgowrap_SessionFactory_CreateSession
+  kind: method
+  cpp_name: SessionFactory::CreateSession
+  method_of: SessionFactoryHandle
+  owner_cpp_type: SessionFactory
+  is_const: false
+  returns:
+    kind: model_pointer
+    cpp_type: ManagedSession*
+    c_type: ManagedSessionHandle*
+    handle: ManagedSessionHandle
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: SessionFactory*
+      c_type: SessionFactoryHandle*
+      handle: SessionFactoryHandle
+  - name: id
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+- name: cgowrap_SessionFactory_BorrowDefaultSession
+  kind: method
+  cpp_name: SessionFactory::BorrowDefaultSession
+  method_of: SessionFactoryHandle
+  owner_cpp_type: SessionFactory
+  is_const: false
+  returns:
+    kind: model_pointer
+    cpp_type: ManagedSession*
+    c_type: ManagedSessionHandle*
+    handle: ManagedSessionHandle
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: SessionFactory*
+      c_type: SessionFactoryHandle*
+      handle: SessionFactoryHandle
+enums: []
+constants: []
+callbacks: []
+support:
+  parser_backend: libclang
+  notes:
+  - Parsed with clang AST and normalized into a conservative C ABI IR.
+  - v1 intentionally rejects unsupported C++ constructs during type normalization.

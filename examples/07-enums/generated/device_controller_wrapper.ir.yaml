@@ -1,0 +1,192 @@
+version: 1
+module: cgowrap
+source_headers:
+- /home/overthinker/project/cgo-gen/examples/07-enums/input/device_controller.hpp
+records:
+- cpp_type: DeviceController
+  handle_name: DeviceControllerHandle
+  kind: class
+opaque_types:
+- name: DeviceControllerHandle
+  cpp_type: DeviceController
+functions:
+- name: cgowrap_DeviceController_new
+  kind: constructor
+  cpp_name: DeviceController
+  method_of: DeviceControllerHandle
+  owner_cpp_type: DeviceController
+  returns:
+    kind: opaque
+    cpp_type: DeviceController
+    c_type: DeviceControllerHandle*
+    handle: DeviceControllerHandle
+  params: []
+- name: cgowrap_DeviceController_delete
+  kind: destructor
+  cpp_name: ~DeviceController
+  method_of: DeviceControllerHandle
+  owner_cpp_type: DeviceController
+  returns:
+    kind: void
+    cpp_type: void
+    c_type: void
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: DeviceController*
+      c_type: DeviceControllerHandle*
+      handle: DeviceControllerHandle
+- name: cgowrap_DeviceController_State
+  kind: method
+  cpp_name: DeviceController::State
+  method_of: DeviceControllerHandle
+  owner_cpp_type: DeviceController
+  is_const: true
+  returns:
+    kind: enum
+    cpp_type: DeviceState
+    c_type: int64_t
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: const DeviceController*
+      c_type: const DeviceControllerHandle*
+      handle: DeviceControllerHandle
+- name: cgowrap_DeviceController_SetState
+  kind: method
+  cpp_name: DeviceController::SetState
+  method_of: DeviceControllerHandle
+  owner_cpp_type: DeviceController
+  is_const: false
+  returns:
+    kind: void
+    cpp_type: void
+    c_type: void
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: DeviceController*
+      c_type: DeviceControllerHandle*
+      handle: DeviceControllerHandle
+  - name: state
+    ty:
+      kind: enum
+      cpp_type: DeviceState
+      c_type: int64_t
+- name: cgowrap_DeviceController_Mode
+  kind: method
+  cpp_name: DeviceController::Mode
+  method_of: DeviceControllerHandle
+  owner_cpp_type: DeviceController
+  is_const: true
+  returns:
+    kind: enum
+    cpp_type: DeviceMode
+    c_type: int64_t
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: const DeviceController*
+      c_type: const DeviceControllerHandle*
+      handle: DeviceControllerHandle
+- name: cgowrap_DeviceController_SetMode
+  kind: method
+  cpp_name: DeviceController::SetMode
+  method_of: DeviceControllerHandle
+  owner_cpp_type: DeviceController
+  is_const: false
+  returns:
+    kind: primitive
+    cpp_type: bool
+    c_type: bool
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: DeviceController*
+      c_type: DeviceControllerHandle*
+      handle: DeviceControllerHandle
+  - name: mode
+    ty:
+      kind: enum
+      cpp_type: DeviceMode
+      c_type: int64_t
+- name: cgowrap_DeviceController_EnableFeature
+  kind: method
+  cpp_name: DeviceController::EnableFeature
+  method_of: DeviceControllerHandle
+  owner_cpp_type: DeviceController
+  is_const: false
+  returns:
+    kind: void
+    cpp_type: void
+    c_type: void
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: DeviceController*
+      c_type: DeviceControllerHandle*
+      handle: DeviceControllerHandle
+  - name: feature
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+- name: cgowrap_DeviceController_IsFeatureEnabled
+  kind: method
+  cpp_name: DeviceController::IsFeatureEnabled
+  method_of: DeviceControllerHandle
+  owner_cpp_type: DeviceController
+  is_const: true
+  returns:
+    kind: primitive
+    cpp_type: bool
+    c_type: bool
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: const DeviceController*
+      c_type: const DeviceControllerHandle*
+      handle: DeviceControllerHandle
+  - name: feature
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+enums:
+- name: DeviceMode
+  cpp_name: DeviceMode
+  variants:
+  - name: DeviceModeManual
+    value: '10'
+  - name: DeviceModeAutomatic
+    value: '20'
+- name: DeviceState
+  cpp_name: DeviceState
+  variants:
+  - name: DeviceStateOffline
+    value: '0'
+  - name: DeviceStateOnline
+    value: '1'
+  - name: DeviceStateError
+    value: '2'
+- name: __anonymous_enum_14_1
+  cpp_name: __anonymous_enum_14_1
+  variants:
+  - name: DeviceFeatureLogging
+    value: '1'
+  - name: DeviceFeatureMetrics
+    value: '2'
+constants: []
+callbacks: []
+support:
+  parser_backend: libclang
+  notes:
+  - Parsed with clang AST and normalized into a conservative C ABI IR.
+  - v1 intentionally rejects unsupported C++ constructs during type normalization.
