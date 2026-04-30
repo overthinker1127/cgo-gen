@@ -33,6 +33,8 @@ pub struct InputConfig {
 pub struct OutputConfig {
     #[serde(default = "default_output_dir")]
     pub dir: PathBuf,
+    #[serde(default = "default_go_version")]
+    pub go_version: String,
     #[serde(default = "default_header_name")]
     pub header: String,
     #[serde(default = "default_source_name")]
@@ -45,6 +47,7 @@ impl Default for OutputConfig {
     fn default() -> Self {
         Self {
             dir: default_output_dir(),
+            go_version: default_go_version(),
             header: default_header_name(),
             source: default_source_name(),
             ir: default_ir_name(),
@@ -56,6 +59,9 @@ pub const WRAPPER_PREFIX: &str = "cgowrap";
 
 fn default_output_dir() -> PathBuf {
     PathBuf::from("gen")
+}
+fn default_go_version() -> String {
+    "1.26".to_string()
 }
 fn default_header_name() -> String {
     "wrapper.h".to_string()

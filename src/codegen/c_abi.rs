@@ -330,8 +330,11 @@ fn write_go_package_metadata(ctx: &PipelineContext) -> Result<()> {
     };
 
     let go_mod_path = ctx.output_dir().join("go.mod");
-    fs::write(&go_mod_path, render_go_mod(go_module))
-        .with_context(|| format!("failed to write go.mod: {}", go_mod_path.display()))?;
+    fs::write(
+        &go_mod_path,
+        render_go_mod(go_module, &ctx.output.go_version),
+    )
+    .with_context(|| format!("failed to write go.mod: {}", go_mod_path.display()))?;
 
     let build_flags_path = ctx.output_dir().join("build_flags.go");
     fs::write(&build_flags_path, render_build_flags(ctx)).with_context(|| {
@@ -344,8 +347,8 @@ fn write_go_package_metadata(ctx: &PipelineContext) -> Result<()> {
     Ok(())
 }
 
-fn render_go_mod(go_module: &str) -> String {
-    format!("module {go_module}\n\ngo 1.25\n")
+fn render_go_mod(go_module: &str, go_version: &str) -> String {
+    format!("module {go_module}\n\ngo {go_version}\n")
 }
 
 fn render_build_flags(ctx: &PipelineContext) -> String {

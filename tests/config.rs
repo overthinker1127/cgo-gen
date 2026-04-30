@@ -135,7 +135,32 @@ output:
         config.input.dir.as_ref(),
         Some(&dir.join("include").canonicalize().unwrap())
     );
+    assert_eq!(config.output.go_version, "1.26");
     assert_eq!(config.output.header, "foo_wrapper.h");
+}
+
+#[test]
+fn loads_output_go_version_override() {
+    let dir = temp_test_dir("go_version_override");
+    fs::create_dir_all(dir.join("include")).unwrap();
+    fs::write(dir.join("include/foo.hpp"), "int foo();").unwrap();
+
+    let config_path = dir.join("cppgo-wrap.yaml");
+    fs::write(
+        &config_path,
+        r#"
+version: 1
+input:
+  dir: include
+output:
+  dir: gen
+  go_version: "1.24"
+"#,
+    )
+    .unwrap();
+
+    let config = Config::load(&config_path).unwrap();
+    assert_eq!(config.output.go_version, "1.24");
 }
 
 #[test]

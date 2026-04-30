@@ -61,5 +61,5 @@ fn checked_in_cpp_inventory_example_uses_handle_backed_item_and_reference_cursor
     let go_mod = fs::read_to_string(with_module.output.dir.join("go.mod")).unwrap();
     assert!(build_flags.contains("#cgo CFLAGS: -I${SRCDIR}"));
     assert!(build_flags.contains("#cgo CXXFLAGS: -I${SRCDIR}"));
-    assert_eq!(go_mod, "module example.com/demo/pkg\n\ngo 1.25\n");
+    assert_eq!(go_mod, "module example.com/demo/pkg\n\ngo 1.26\n");
 }

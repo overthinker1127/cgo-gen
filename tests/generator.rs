@@ -523,7 +523,7 @@ output:
     cgo_gen::generator::generate(&config, &ir, false, &Default::default()).unwrap();
 
     let go_mod = fs::read_to_string(root.join("out/go.mod")).unwrap();
-    assert_eq!(go_mod, "module example.com/demo/pkg\n\ngo 1.25\n");
+    assert_eq!(go_mod, "module example.com/demo/pkg\n\ngo 1.26\n");
 
     let build_flags = fs::read_to_string(root.join("out/build_flags.go")).unwrap();
     assert!(build_flags.contains("package out"));
@@ -537,6 +537,39 @@ output:
     assert!(!build_flags.contains("inline/include"));
     assert!(!build_flags.contains("-Winvalid-offsetof"));
     assert!(!build_flags.contains("-Wall"));
+}
+
+#[test]
+fn generate_with_go_module_uses_configured_go_version() {
+    let root = env::temp_dir().join(format!(
+        "c_go_go_package_metadata_version_{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(root.join("include")).unwrap();
+    fs::write(root.join("include/Api.hpp"), "int Add(int lhs, int rhs);").unwrap();
+    fs::write(
+        root.join("config.yaml"),
+        r#"
+version: 1
+input:
+  dir: include
+output:
+  dir: out
+  go_version: "1.24"
+"#,
+    )
+    .unwrap();
+
+    let config = PipelineContext::from_config_path(root.join("config.yaml"))
+        .unwrap()
+        .with_go_module(Some("example.com/demo/pkg".to_string()));
+    let parsed = parser::parse(&config).unwrap();
+    let ir = ir::normalize(&config, &parsed).unwrap();
+    cgo_gen::generator::generate(&config, &ir, false, &Default::default()).unwrap();
+
+    let go_mod = fs::read_to_string(root.join("out/go.mod")).unwrap();
+    assert_eq!(go_mod, "module example.com/demo/pkg\n\ngo 1.24\n");
 }
 
 #[test]
