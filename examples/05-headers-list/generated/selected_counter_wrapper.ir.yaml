@@ -1,0 +1,69 @@
+version: 1
+module: cgowrap
+source_headers:
+- /home/overthinker/project/cgo-gen/examples/05-headers-list/input/selected_counter.hpp
+records:
+- cpp_type: SelectedCounter
+  handle_name: SelectedCounterHandle
+  kind: class
+opaque_types:
+- name: SelectedCounterHandle
+  cpp_type: SelectedCounter
+functions:
+- name: cgowrap_SelectedCounter_new
+  kind: constructor
+  cpp_name: SelectedCounter
+  method_of: SelectedCounterHandle
+  owner_cpp_type: SelectedCounter
+  returns:
+    kind: opaque
+    cpp_type: SelectedCounter
+    c_type: SelectedCounterHandle*
+    handle: SelectedCounterHandle
+  params: []
+- name: cgowrap_SelectedCounter_delete
+  kind: destructor
+  cpp_name: SelectedCounter
+  method_of: SelectedCounterHandle
+  owner_cpp_type: SelectedCounter
+  returns:
+    kind: void
+    cpp_type: void
+    c_type: void
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: SelectedCounter*
+      c_type: SelectedCounterHandle*
+      handle: SelectedCounterHandle
+- name: cgowrap_SelectedCounter_Increment
+  kind: method
+  cpp_name: SelectedCounter::Increment
+  method_of: SelectedCounterHandle
+  owner_cpp_type: SelectedCounter
+  is_const: true
+  returns:
+    kind: primitive
+    cpp_type: int
+    c_type: int
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: const SelectedCounter*
+      c_type: const SelectedCounterHandle*
+      handle: SelectedCounterHandle
+  - name: value
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+enums: []
+constants: []
+callbacks: []
+support:
+  parser_backend: libclang
+  notes:
+  - Parsed with clang AST and normalized into a conservative C ABI IR.
+  - v1 intentionally rejects unsupported C++ constructs during type normalization.

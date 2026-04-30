@@ -88,4 +88,18 @@ fn checked_in_example_generated_outputs_are_current() {
             "build_flags.go",
         ],
     );
+    assert_generated_matches(
+        "examples/05-headers-list",
+        None,
+        &[
+            "selected_widget_wrapper.h",
+            "selected_widget_wrapper.cpp",
+            "selected_widget_wrapper.go",
+            "selected_widget_wrapper.ir.yaml",
+            "selected_counter_wrapper.h",
+            "selected_counter_wrapper.cpp",
+            "selected_counter_wrapper.go",
+            "selected_counter_wrapper.ir.yaml",
+        ],
+    );
 }

@@ -1,0 +1,12 @@
+version: 1
+
+input:
+  headers:
+    - input/selected_widget.hpp
+    - input/selected_counter.hpp
+  clang_args:
+    - -std=c++17
+    - -Iinput
+
+output:
+  dir: generated

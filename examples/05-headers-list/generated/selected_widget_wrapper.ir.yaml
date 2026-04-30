@@ -1,0 +1,64 @@
+version: 1
+module: cgowrap
+source_headers:
+- /home/overthinker/project/cgo-gen/examples/05-headers-list/input/selected_widget.hpp
+records:
+- cpp_type: SelectedWidget
+  handle_name: SelectedWidgetHandle
+  kind: class
+opaque_types:
+- name: SelectedWidgetHandle
+  cpp_type: SelectedWidget
+functions:
+- name: cgowrap_SelectedWidget_new
+  kind: constructor
+  cpp_name: SelectedWidget
+  method_of: SelectedWidgetHandle
+  owner_cpp_type: SelectedWidget
+  returns:
+    kind: opaque
+    cpp_type: SelectedWidget
+    c_type: SelectedWidgetHandle*
+    handle: SelectedWidgetHandle
+  params: []
+- name: cgowrap_SelectedWidget_delete
+  kind: destructor
+  cpp_name: SelectedWidget
+  method_of: SelectedWidgetHandle
+  owner_cpp_type: SelectedWidget
+  returns:
+    kind: void
+    cpp_type: void
+    c_type: void
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: SelectedWidget*
+      c_type: SelectedWidgetHandle*
+      handle: SelectedWidgetHandle
+- name: cgowrap_SelectedWidget_Value
+  kind: method
+  cpp_name: SelectedWidget::Value
+  method_of: SelectedWidgetHandle
+  owner_cpp_type: SelectedWidget
+  is_const: true
+  returns:
+    kind: primitive
+    cpp_type: int
+    c_type: int
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: const SelectedWidget*
+      c_type: const SelectedWidgetHandle*
+      handle: SelectedWidgetHandle
+enums: []
+constants: []
+callbacks: []
+support:
+  parser_backend: libclang
+  notes:
+  - Parsed with clang AST and normalized into a conservative C ABI IR.
+  - v1 intentionally rejects unsupported C++ constructs during type normalization.
