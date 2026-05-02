@@ -1,0 +1,202 @@
+version: 1
+module: cgowrap
+source_headers:
+- /Users/kyh0703/Project/cgo-gen/examples/09-struct-fields/input/sensor_reading.hpp
+records:
+- cpp_type: SensorReading
+  handle_name: SensorReadingHandle
+  kind: struct
+opaque_types:
+- name: SensorReadingHandle
+  cpp_type: SensorReading
+functions:
+- name: cgowrap_SensorReading_new
+  kind: constructor
+  cpp_name: SensorReading
+  method_of: SensorReadingHandle
+  owner_cpp_type: SensorReading
+  returns:
+    kind: opaque
+    cpp_type: SensorReading
+    c_type: SensorReadingHandle*
+    handle: SensorReadingHandle
+  params: []
+- name: cgowrap_SensorReading_delete
+  kind: destructor
+  cpp_name: SensorReading
+  method_of: SensorReadingHandle
+  owner_cpp_type: SensorReading
+  returns:
+    kind: void
+    cpp_type: void
+    c_type: void
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: SensorReading*
+      c_type: SensorReadingHandle*
+      handle: SensorReadingHandle
+- name: cgowrap_SensorReading_GetSampleId
+  kind: method
+  cpp_name: SensorReading::GetSampleId
+  method_of: SensorReadingHandle
+  owner_cpp_type: SensorReading
+  is_const: true
+  field_accessor:
+    field_name: sample_id
+    access: get
+  returns:
+    kind: primitive
+    cpp_type: int32_t
+    c_type: int
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: const SensorReading*
+      c_type: const SensorReadingHandle*
+      handle: SensorReadingHandle
+- name: cgowrap_SensorReading_SetSampleId
+  kind: method
+  cpp_name: SensorReading::SetSampleId
+  method_of: SensorReadingHandle
+  owner_cpp_type: SensorReading
+  is_const: false
+  field_accessor:
+    field_name: sample_id
+    access: set
+  returns:
+    kind: void
+    cpp_type: void
+    c_type: void
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: SensorReading*
+      c_type: SensorReadingHandle*
+      handle: SensorReadingHandle
+  - name: value
+    ty:
+      kind: primitive
+      cpp_type: int32_t
+      c_type: int
+- name: cgowrap_SensorReading_GetTemperatureC
+  kind: method
+  cpp_name: SensorReading::GetTemperatureC
+  method_of: SensorReadingHandle
+  owner_cpp_type: SensorReading
+  is_const: true
+  field_accessor:
+    field_name: temperature_c
+    access: get
+  returns:
+    kind: primitive
+    cpp_type: double
+    c_type: double
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: const SensorReading*
+      c_type: const SensorReadingHandle*
+      handle: SensorReadingHandle
+- name: cgowrap_SensorReading_SetTemperatureC
+  kind: method
+  cpp_name: SensorReading::SetTemperatureC
+  method_of: SensorReadingHandle
+  owner_cpp_type: SensorReading
+  is_const: false
+  field_accessor:
+    field_name: temperature_c
+    access: set
+  returns:
+    kind: void
+    cpp_type: void
+    c_type: void
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: SensorReading*
+      c_type: SensorReadingHandle*
+      handle: SensorReadingHandle
+  - name: value
+    ty:
+      kind: primitive
+      cpp_type: double
+      c_type: double
+- name: cgowrap_SensorReading_GetLabel
+  kind: method
+  cpp_name: SensorReading::GetLabel
+  method_of: SensorReadingHandle
+  owner_cpp_type: SensorReading
+  is_const: true
+  field_accessor:
+    field_name: label
+    access: get
+  returns:
+    kind: c_string
+    cpp_type: char[32]
+    c_type: const char*
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: const SensorReading*
+      c_type: const SensorReadingHandle*
+      handle: SensorReadingHandle
+- name: cgowrap_SensorReading_SetLabel
+  kind: method
+  cpp_name: SensorReading::SetLabel
+  method_of: SensorReadingHandle
+  owner_cpp_type: SensorReading
+  is_const: false
+  field_accessor:
+    field_name: label
+    access: set
+  returns:
+    kind: void
+    cpp_type: void
+    c_type: void
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: SensorReading*
+      c_type: SensorReadingHandle*
+      handle: SensorReadingHandle
+  - name: value
+    ty:
+      kind: c_string
+      cpp_type: char[32]
+      c_type: const char*
+- name: cgowrap_SensorReading_GetSchemaVersion
+  kind: method
+  cpp_name: SensorReading::GetSchemaVersion
+  method_of: SensorReadingHandle
+  owner_cpp_type: SensorReading
+  is_const: true
+  field_accessor:
+    field_name: schema_version
+    access: get
+  returns:
+    kind: primitive
+    cpp_type: const int32_t
+    c_type: int
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: const SensorReading*
+      c_type: const SensorReadingHandle*
+      handle: SensorReadingHandle
+enums: []
+constants: []
+callbacks: []
+support:
+  parser_backend: libclang
+  notes:
+  - Parsed with clang AST and normalized into a conservative C ABI IR.
+  - v1 intentionally rejects unsupported C++ constructs during type normalization.

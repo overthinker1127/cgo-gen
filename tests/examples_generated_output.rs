@@ -155,4 +155,24 @@ fn checked_in_example_generated_outputs_are_current() {
             "overload_math_wrapper.ir.yaml",
         ],
     );
+    assert_generated_matches(
+        "examples/09-struct-fields",
+        None,
+        &[
+            "sensor_reading_wrapper.h",
+            "sensor_reading_wrapper.cpp",
+            "sensor_reading_wrapper.go",
+            "sensor_reading_wrapper.ir.yaml",
+        ],
+    );
+    assert_generated_matches(
+        "examples/10-strings",
+        None,
+        &[
+            "string_tool_wrapper.h",
+            "string_tool_wrapper.cpp",
+            "string_tool_wrapper.go",
+            "string_tool_wrapper.ir.yaml",
+        ],
+    );
 }

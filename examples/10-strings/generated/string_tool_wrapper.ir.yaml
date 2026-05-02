@@ -1,0 +1,146 @@
+version: 1
+module: cgowrap
+source_headers:
+- /Users/kyh0703/Project/cgo-gen/examples/10-strings/input/string_tool.hpp
+records:
+- cpp_type: StringTool
+  handle_name: StringToolHandle
+  kind: class
+opaque_types:
+- name: StringToolHandle
+  cpp_type: StringTool
+functions:
+- name: cgowrap_StringTool_new__void
+  kind: constructor
+  cpp_name: StringTool
+  method_of: StringToolHandle
+  owner_cpp_type: StringTool
+  returns:
+    kind: opaque
+    cpp_type: StringTool
+    c_type: StringToolHandle*
+    handle: StringToolHandle
+  params: []
+- name: cgowrap_StringTool_new__c_str
+  kind: constructor
+  cpp_name: StringTool
+  method_of: StringToolHandle
+  owner_cpp_type: StringTool
+  returns:
+    kind: opaque
+    cpp_type: StringTool
+    c_type: StringToolHandle*
+    handle: StringToolHandle
+  params:
+  - name: prefix
+    ty:
+      kind: c_string
+      cpp_type: const char*
+      c_type: const char*
+- name: cgowrap_StringTool_delete
+  kind: destructor
+  cpp_name: ~StringTool
+  method_of: StringToolHandle
+  owner_cpp_type: StringTool
+  returns:
+    kind: void
+    cpp_type: void
+    c_type: void
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: StringTool*
+      c_type: StringToolHandle*
+      handle: StringToolHandle
+- name: cgowrap_StringTool_Prefix
+  kind: method
+  cpp_name: StringTool::Prefix
+  method_of: StringToolHandle
+  owner_cpp_type: StringTool
+  is_const: true
+  returns:
+    kind: c_string
+    cpp_type: const char*
+    c_type: const char*
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: const StringTool*
+      c_type: const StringToolHandle*
+      handle: StringToolHandle
+- name: cgowrap_StringTool_SetPrefix
+  kind: method
+  cpp_name: StringTool::SetPrefix
+  method_of: StringToolHandle
+  owner_cpp_type: StringTool
+  is_const: false
+  returns:
+    kind: void
+    cpp_type: void
+    c_type: void
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: StringTool*
+      c_type: StringToolHandle*
+      handle: StringToolHandle
+  - name: prefix
+    ty:
+      kind: c_string
+      cpp_type: const char*
+      c_type: const char*
+- name: cgowrap_StringTool_Join
+  kind: method
+  cpp_name: StringTool::Join
+  method_of: StringToolHandle
+  owner_cpp_type: StringTool
+  is_const: true
+  returns:
+    kind: string
+    cpp_type: std::string
+    c_type: char*
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: const StringTool*
+      c_type: const StringToolHandle*
+      handle: StringToolHandle
+  - name: value
+    ty:
+      kind: string
+      cpp_type: std::string
+      c_type: char*
+- name: cgowrap_StringTool_EchoView
+  kind: method
+  cpp_name: StringTool::EchoView
+  method_of: StringToolHandle
+  owner_cpp_type: StringTool
+  is_const: true
+  returns:
+    kind: string
+    cpp_type: std::string
+    c_type: char*
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: const StringTool*
+      c_type: const StringToolHandle*
+      handle: StringToolHandle
+  - name: value
+    ty:
+      kind: string
+      cpp_type: std::string_view
+      c_type: char*
+enums: []
+constants: []
+callbacks: []
+support:
+  parser_backend: libclang
+  notes:
+  - Parsed with clang AST and normalized into a conservative C ABI IR.
+  - v1 intentionally rejects unsupported C++ constructs during type normalization.
