@@ -145,4 +145,14 @@ fn checked_in_example_generated_outputs_are_current() {
             "device_controller_wrapper.ir.yaml",
         ],
     );
+    assert_generated_matches(
+        "examples/08-overloading",
+        None,
+        &[
+            "overload_math_wrapper.h",
+            "overload_math_wrapper.cpp",
+            "overload_math_wrapper.go",
+            "overload_math_wrapper.ir.yaml",
+        ],
+    );
 }

@@ -1,0 +1,117 @@
+version: 1
+module: cgowrap
+source_headers:
+- /Users/kyh0703/Project/cgo-gen/examples/08-overloading/input/overload_math.hpp
+records:
+- cpp_type: OverloadMath
+  handle_name: OverloadMathHandle
+  kind: class
+opaque_types:
+- name: OverloadMathHandle
+  cpp_type: OverloadMath
+functions:
+- name: cgowrap_OverloadMath_new__void
+  kind: constructor
+  cpp_name: OverloadMath
+  method_of: OverloadMathHandle
+  owner_cpp_type: OverloadMath
+  returns:
+    kind: opaque
+    cpp_type: OverloadMath
+    c_type: OverloadMathHandle*
+    handle: OverloadMathHandle
+  params: []
+- name: cgowrap_OverloadMath_new__int
+  kind: constructor
+  cpp_name: OverloadMath
+  method_of: OverloadMathHandle
+  owner_cpp_type: OverloadMath
+  returns:
+    kind: opaque
+    cpp_type: OverloadMath
+    c_type: OverloadMathHandle*
+    handle: OverloadMathHandle
+  params:
+  - name: base
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+- name: cgowrap_OverloadMath_delete
+  kind: destructor
+  cpp_name: ~OverloadMath
+  method_of: OverloadMathHandle
+  owner_cpp_type: OverloadMath
+  returns:
+    kind: void
+    cpp_type: void
+    c_type: void
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: OverloadMath*
+      c_type: OverloadMathHandle*
+      handle: OverloadMathHandle
+- name: cgowrap_OverloadMath_Add__int_int_mut
+  kind: method
+  cpp_name: OverloadMath::Add
+  method_of: OverloadMathHandle
+  owner_cpp_type: OverloadMath
+  is_const: false
+  returns:
+    kind: primitive
+    cpp_type: double
+    c_type: double
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: OverloadMath*
+      c_type: OverloadMathHandle*
+      handle: OverloadMathHandle
+  - name: lhs
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+  - name: rhs
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+- name: cgowrap_OverloadMath_Add__double_double_mut
+  kind: method
+  cpp_name: OverloadMath::Add
+  method_of: OverloadMathHandle
+  owner_cpp_type: OverloadMath
+  is_const: false
+  returns:
+    kind: primitive
+    cpp_type: double
+    c_type: double
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: OverloadMath*
+      c_type: OverloadMathHandle*
+      handle: OverloadMathHandle
+  - name: lhs
+    ty:
+      kind: primitive
+      cpp_type: double
+      c_type: double
+  - name: rhs
+    ty:
+      kind: primitive
+      cpp_type: double
+      c_type: double
+enums: []
+constants: []
+callbacks: []
+support:
+  parser_backend: libclang
+  notes:
+  - Parsed with clang AST and normalized into a conservative C ABI IR.
+  - v1 intentionally rejects unsupported C++ constructs during type normalization.
