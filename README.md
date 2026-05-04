@@ -12,11 +12,12 @@ It is designed for controlled C/C++ header surfaces, not for arbitrary modern C+
 
 ## Quick Start
 
-Run `check` first, then generate wrappers from the same config:
+From a repository checkout, run `check` first against the smallest example, then
+generate wrappers from the same config:
 
 ```bash
-cgo-gen check --config path/to/config.yaml
-cgo-gen generate --config path/to/config.yaml --dump-ir
+cargo run --bin cgo-gen -- check --config examples/01-c-library/config.yaml
+cargo run --bin cgo-gen -- generate --config examples/01-c-library/config.yaml --dump-ir
 ```
 
 That flow:
@@ -26,6 +27,13 @@ That flow:
 3. normalize declarations into IR
 4. generate wrapper files into `output.dir`
 5. optionally dump the generated `.ir.yaml` file
+
+After installing `cgo-gen`, use the same flow with your own config:
+
+```bash
+cgo-gen check --config path/to/config.yaml
+cgo-gen generate --config path/to/config.yaml --dump-ir
+```
 
 ## Requirements
 
