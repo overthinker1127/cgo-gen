@@ -490,17 +490,28 @@ fn generate_with_go_module_writes_build_flags_and_go_mod() {
     let _ = fs::remove_dir_all(&root);
     fs::create_dir_all(root.join("include")).unwrap();
     fs::write(root.join("include/Api.hpp"), "int Add(int lhs, int rhs);").unwrap();
+    let absolute_inline = root.join("absolute/inline");
+    let absolute_split = root.join("absolute/split");
     fs::write(
         root.join("config.yaml"),
-        r#"
+        format!(
+            r#"
 version: 1
 input:
   dir: include
   clang_args:
-    - -I${SDK_INCLUDE}
+    - -Irelative/inline
+    - -I
+    - relative/split
+    - -I{absolute_inline}
+    - -I
+    - {absolute_split}
+    - -I${{SDK_INCLUDE}}
     - -isystem
     - system/include
     - -isysteminline/include
+    - -D
+    - SPLIT=1
     - -DMODE=1
     - -std=c++20
     - -Wall
@@ -508,6 +519,9 @@ input:
 output:
   dir: out
 "#,
+            absolute_inline = absolute_inline.display(),
+            absolute_split = absolute_split.display(),
+        ),
     )
     .unwrap();
 
@@ -529,7 +543,9 @@ output:
     assert!(build_flags.contains("package out"));
     assert!(build_flags.contains("#cgo CFLAGS: -I${SRCDIR}"));
     assert!(build_flags.contains(&format!(
-        "#cgo CXXFLAGS: -I${{SRCDIR}} -I{} -DMODE=1 -std=c++20",
+        "#cgo CXXFLAGS: -I${{SRCDIR}} -I${{SRCDIR}}/../relative/inline -I ${{SRCDIR}}/../relative/split -I{} -I {} -I{} -D SPLIT=1 -DMODE=1 -std=c++20",
+        absolute_inline.display(),
+        absolute_split.display(),
         root.join("sdk/include").display()
     )));
     assert!(!build_flags.contains("-isystem"));

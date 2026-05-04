@@ -1,7 +1,7 @@
 version: 1
 module: cgowrap
 source_headers:
-- /home/overthinker/project/gogen/examples/04-go-module/input/score.h
+- /home/overthinker/project/cgo-gen/examples/04-go-module/input/score.h
 records: []
 opaque_types: []
 functions:

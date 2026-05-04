@@ -340,13 +340,25 @@ fn render_build_flags(ctx: &PipelineContext) -> String {
 fn exported_cxxflags(ctx: &PipelineContext) -> Vec<String> {
     let mut flags = vec!["-I${SRCDIR}".to_string()];
     let mut index = 0;
-    let raw = &ctx.input.clang_args;
+    let raw_args = ctx.raw_clang_args();
+    let resolved_args = &ctx.input.clang_args;
 
-    while index < raw.len() {
-        let arg = &raw[index];
+    while index < resolved_args.len() {
+        let arg = &resolved_args[index];
+        let raw_arg = raw_args.get(index).unwrap_or(arg);
 
-        if arg == "-I" || arg == "-D" {
-            if let Some(value) = raw.get(index + 1) {
+        if arg == "-I" {
+            if let Some(value) = resolved_args.get(index + 1) {
+                let raw_value = raw_args.get(index + 1).unwrap_or(value);
+                flags.push(arg.clone());
+                flags.push(exported_include_path(raw_value, value, &ctx.output_dir()));
+            }
+            index += 2;
+            continue;
+        }
+
+        if arg == "-D" {
+            if let Some(value) = resolved_args.get(index + 1) {
                 flags.push(arg.clone());
                 flags.push(value.clone());
             }
@@ -359,10 +371,13 @@ fn exported_cxxflags(ctx: &PipelineContext) -> Vec<String> {
             continue;
         }
 
-        if (arg.starts_with("-I") && arg.len() > 2)
-            || (arg.starts_with("-D") && arg.len() > 2)
-            || arg.starts_with("-std=")
-        {
+        if arg.starts_with("-I") && arg.len() > 2 {
+            let raw_value = raw_arg.strip_prefix("-I").unwrap_or(&arg[2..]);
+            flags.push(format!(
+                "-I{}",
+                exported_include_path(raw_value, &arg[2..], &ctx.output_dir())
+            ));
+        } else if (arg.starts_with("-D") && arg.len() > 2) || arg.starts_with("-std=") {
             flags.push(arg.clone());
         }
 
@@ -370,6 +385,83 @@ fn exported_cxxflags(ctx: &PipelineContext) -> Vec<String> {
     }
 
     flags
+}
+
+fn exported_include_path(raw_value: &str, resolved_value: &str, output_dir: &Path) -> String {
+    if !is_plain_relative_include(raw_value) {
+        return resolved_value.to_string();
+    }
+
+    let resolved_path = Path::new(resolved_value);
+    if !resolved_path.is_absolute() {
+        return resolved_value.to_string();
+    }
+
+    let output_dir = absolute_output_dir(output_dir);
+    relative_path_from(resolved_path, &output_dir)
+        .and_then(|relative| path_to_cgo_string(&relative))
+        .map(|relative| {
+            if relative.is_empty() {
+                "${SRCDIR}".to_string()
+            } else {
+                format!("${{SRCDIR}}/{relative}")
+            }
+        })
+        .unwrap_or_else(|| resolved_value.to_string())
+}
+
+fn is_plain_relative_include(value: &str) -> bool {
+    !value.contains('$') && !Path::new(value).is_absolute()
+}
+
+fn absolute_output_dir(output_dir: &Path) -> PathBuf {
+    let absolute = if output_dir.is_absolute() {
+        output_dir.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map(|cwd| cwd.join(output_dir))
+            .unwrap_or_else(|_| output_dir.to_path_buf())
+    };
+
+    absolute.canonicalize().unwrap_or(absolute)
+}
+
+fn relative_path_from(path: &Path, base: &Path) -> Option<PathBuf> {
+    let path_components = path.components().collect::<Vec<_>>();
+    let base_components = base.components().collect::<Vec<_>>();
+
+    if path_components.first() != base_components.first() {
+        return None;
+    }
+
+    let common_prefix_len = path_components
+        .iter()
+        .zip(base_components.iter())
+        .take_while(|(left, right)| left == right)
+        .count();
+
+    let mut relative = PathBuf::new();
+    for component in &base_components[common_prefix_len..] {
+        match component {
+            std::path::Component::Normal(_) => relative.push(".."),
+            std::path::Component::CurDir => {}
+            _ => return None,
+        }
+    }
+    for component in &path_components[common_prefix_len..] {
+        relative.push(component.as_os_str());
+    }
+
+    Some(relative)
+}
+
+fn path_to_cgo_string(path: &Path) -> Option<String> {
+    Some(
+        path.components()
+            .map(|component| component.as_os_str().to_str())
+            .collect::<Option<Vec<_>>>()?
+            .join("/"),
+    )
 }
 
 fn go_package_name(path: &Path) -> String {

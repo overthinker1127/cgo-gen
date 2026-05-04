@@ -2,6 +2,8 @@ version: 1
 
 input:
   dir: input
+  clang_args:
+    - -Iinput
 
 output:
   dir: generated

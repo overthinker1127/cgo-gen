@@ -17,13 +17,27 @@ fn temp_output_dir(label: &str) -> PathBuf {
     path
 }
 
+fn copy_dir_all(from: &Path, to: &Path) {
+    fs::create_dir_all(to).unwrap();
+    for entry in fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        let source = entry.path();
+        let target = to.join(entry.file_name());
+        if source.is_dir() {
+            copy_dir_all(&source, &target);
+        } else {
+            fs::copy(&source, &target).unwrap();
+        }
+    }
+}
+
 fn assert_generated_matches(example: &str, go_module: Option<&str>, expected_files: &[&str]) {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join(example);
     let output_root = temp_output_dir(example.replace('/', "_").as_str());
-    let output_dir = output_root.join("generated");
-    let mut ctx = PipelineContext::from_config_path(root.join("config.yaml"))
-        .unwrap()
-        .with_output_dir(output_dir.clone());
+    let work_root = output_root.join(example);
+    copy_dir_all(&root, &work_root);
+    let output_dir = work_root.join("generated");
+    let mut ctx = PipelineContext::from_config_path(work_root.join("config.yaml")).unwrap();
     if let Some(go_module) = go_module {
         ctx = ctx.with_go_module(Some(go_module.to_string()));
     }
