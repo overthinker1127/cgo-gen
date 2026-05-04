@@ -23,7 +23,40 @@ struct SyntheticOpaqueDelete {
     symbol_name: String,
 }
 
-pub fn generate_all(ctx: &PipelineContext, write_ir: bool) -> Result<()> {
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct GenerationSummary {
+    generated_files: BTreeSet<PathBuf>,
+}
+
+impl GenerationSummary {
+    pub fn generated_file_count(&self) -> usize {
+        self.generated_files.len()
+    }
+
+    pub fn output_dirs(&self) -> Vec<PathBuf> {
+        self.generated_files
+            .iter()
+            .filter_map(|path| path.parent().map(Path::to_path_buf))
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect()
+    }
+
+    fn record(&mut self, path: PathBuf) {
+        self.generated_files.insert(path);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn record_for_test(&mut self, path: impl Into<PathBuf>) {
+        self.record(path.into());
+    }
+
+    fn merge(&mut self, other: GenerationSummary) {
+        self.generated_files.extend(other.generated_files);
+    }
+}
+
+pub fn generate_all(ctx: &PipelineContext, write_ir: bool) -> Result<GenerationSummary> {
     let (ctx, parsed) = prepare_with_parsed(&ctx)?;
     let generation_headers = generation_headers(&ctx)?;
 
@@ -46,7 +79,20 @@ pub fn generate_all(ctx: &PipelineContext, write_ir: bool) -> Result<()> {
             .unwrap_or_else(|| parsed.clone());
         let normalized_ir = ir::normalize(&scoped, &header_api)?;
         let class_handles = class_handles_with_methods(&normalized_ir);
-        return generate(&scoped, &normalized_ir, write_ir, &class_handles);
+        let local_owned_opaque_value_handles = opaque_model_value_handles_needing_go_ownership(
+            &scoped,
+            &normalized_ir,
+            &class_handles,
+        );
+        return generate_with_opaque_ownership(
+            &scoped,
+            &normalized_ir,
+            write_ir,
+            &class_handles,
+            &class_handles,
+            &local_owned_opaque_value_handles,
+            &local_owned_opaque_value_handles,
+        );
     }
 
     // Pass 1: normalize all headers up front so we can do global deduplication in pass 2.
@@ -81,6 +127,7 @@ pub fn generate_all(ctx: &PipelineContext, write_ir: bool) -> Result<()> {
     // emitted so that non-class opaque types shared across headers are declared only once.
     let mut globally_emitted_opaques = global_class_handles.clone();
     globally_emitted_opaques.extend(global_owned_opaque_value_handles.iter().cloned());
+    let mut summary = GenerationSummary::default();
     for (scoped, normalized_ir) in &all_normalized {
         let local_owned_opaque_value_handles = opaque_model_value_handles_needing_go_ownership(
             scoped,
@@ -90,7 +137,7 @@ pub fn generate_all(ctx: &PipelineContext, write_ir: bool) -> Result<()> {
         .into_iter()
         .filter(|handle| owned_opaque_owner.insert(handle.clone()))
         .collect::<BTreeSet<_>>();
-        generate_with_opaque_ownership(
+        summary.merge(generate_with_opaque_ownership(
             scoped,
             normalized_ir,
             write_ir,
@@ -98,13 +145,13 @@ pub fn generate_all(ctx: &PipelineContext, write_ir: bool) -> Result<()> {
             &globally_emitted_opaques,
             &global_owned_opaque_value_handles,
             &local_owned_opaque_value_handles,
-        )?;
+        )?);
         for ot in &normalized_ir.opaque_types {
             globally_emitted_opaques.insert(ot.name.clone());
         }
     }
 
-    Ok(())
+    Ok(summary)
 }
 
 /// Returns the set of C handle names for classes that will generate primary Go wrapper structs.
@@ -212,6 +259,7 @@ pub fn generate(
         &local_owned_opaque_value_handles,
         &local_owned_opaque_value_handles,
     )
+    .map(|_| ())
 }
 
 fn generate_with_opaque_ownership(
@@ -222,7 +270,7 @@ fn generate_with_opaque_ownership(
     globally_emitted_opaques: &BTreeSet<String>,
     global_owned_opaque_value_handles: &BTreeSet<String>,
     local_owned_opaque_value_handles: &BTreeSet<String>,
-) -> Result<()> {
+) -> Result<GenerationSummary> {
     fs::create_dir_all(ctx.output_dir()).with_context(|| {
         format!(
             "failed to create output dir: {}",
@@ -230,6 +278,7 @@ fn generate_with_opaque_ownership(
         )
     })?;
 
+    let mut summary = GenerationSummary::default();
     let header_path = ctx.output_dir().join(&ctx.output.header);
     let source_path = ctx.output_dir().join(&ctx.output.source);
     let ir_path = ctx.output_dir().join(&ctx.output.ir);
@@ -243,6 +292,7 @@ fn generate_with_opaque_ownership(
         )),
     )
     .with_context(|| format!("failed to write header: {}", header_path.display()))?;
+    summary.record(header_path);
     fs::write(
         &source_path,
         trim_trailing_blank_lines(render_source_with_owned_opaque_handles(
@@ -253,6 +303,7 @@ fn generate_with_opaque_ownership(
         )),
     )
     .with_context(|| format!("failed to write source: {}", source_path.display()))?;
+    summary.record(source_path);
     for go_file in facade::render_go_facade_with_owned_opaques(
         &ctx,
         ir,
@@ -269,15 +320,19 @@ fn generate_with_opaque_ownership(
         let go_path = ctx.output_dir().join(&go_file.filename);
         fs::write(&go_path, trim_trailing_blank_lines(go_file.contents))
             .with_context(|| format!("failed to write Go wrapper: {}", go_path.display()))?;
+        summary.record(go_path);
     }
-    write_go_package_metadata(&ctx)?;
+    for path in write_go_package_metadata(&ctx)? {
+        summary.record(path);
+    }
     if write_ir {
         let dump_ir = ir_with_source_headers_relative_to(ir, &ctx.output_dir());
         let serialized = serde_yaml::to_string(&dump_ir)?;
         fs::write(&ir_path, serialized)
             .with_context(|| format!("failed to write ir dump: {}", ir_path.display()))?;
+        summary.record(ir_path);
     }
-    Ok(())
+    Ok(summary)
 }
 
 fn trim_trailing_blank_lines(mut contents: String) -> String {
@@ -367,17 +422,19 @@ fn is_path_prefix(component: &Component<'_>) -> bool {
     matches!(component, Component::Prefix(_) | Component::RootDir)
 }
 
-fn write_go_package_metadata(ctx: &PipelineContext) -> Result<()> {
+fn write_go_package_metadata(ctx: &PipelineContext) -> Result<Vec<PathBuf>> {
     let Some(go_module) = ctx.go_module.as_deref() else {
-        return Ok(());
+        return Ok(Vec::new());
     };
 
+    let mut paths = Vec::new();
     let go_mod_path = ctx.output_dir().join("go.mod");
     fs::write(
         &go_mod_path,
         render_go_mod(go_module, &ctx.output.go_version),
     )
     .with_context(|| format!("failed to write go.mod: {}", go_mod_path.display()))?;
+    paths.push(go_mod_path);
 
     let build_flags_path = ctx.output_dir().join("build_flags.go");
     fs::write(&build_flags_path, render_build_flags(ctx)).with_context(|| {
@@ -386,8 +443,9 @@ fn write_go_package_metadata(ctx: &PipelineContext) -> Result<()> {
             build_flags_path.display()
         )
     })?;
+    paths.push(build_flags_path);
 
-    Ok(())
+    Ok(paths)
 }
 
 fn render_go_mod(go_module: &str, go_version: &str) -> String {

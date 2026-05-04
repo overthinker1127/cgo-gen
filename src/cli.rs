@@ -90,7 +90,8 @@ pub fn run() -> Result<()> {
             let ctx = PipelineContext::new(config)
                 .with_raw_clang_args(raw_clang_args)
                 .with_go_module(go_module);
-            generator::generate_all(&ctx, dump_ir)?;
+            let summary = generator::generate_all(&ctx, dump_ir)?;
+            println!("{}", format_generation_summary(&summary));
         }
         Command::Ir {
             config,
@@ -124,23 +125,87 @@ pub fn run() -> Result<()> {
             let (ctx, parsed) = generator::prepare_with_parsed(&ctx)?;
             let ir = ir::normalize(&ctx, &parsed)?;
             println!(
-                "ok: {} headers, {} records, {} functions, {} enums, {} abi functions",
-                parsed.headers.len(),
-                parsed.records.len(),
-                parsed.functions.len(),
-                parsed.enums.len(),
-                ir.functions.len()
+                "{}",
+                format_check_summary(&CheckSummary {
+                    headers: parsed.headers.len(),
+                    records: parsed.records.len(),
+                    functions: parsed.functions.len(),
+                    enums: parsed.enums.len(),
+                    abi_functions: ir.functions.len(),
+                    skipped_declarations: &ir.support.skipped_declarations,
+                })
             );
         }
     }
     Ok(())
 }
 
+struct CheckSummary<'a> {
+    headers: usize,
+    records: usize,
+    functions: usize,
+    enums: usize,
+    abi_functions: usize,
+    skipped_declarations: &'a [ir::SkippedDeclaration],
+}
+
+fn format_check_summary(summary: &CheckSummary<'_>) -> String {
+    let skipped_count = summary.skipped_declarations.len();
+    if skipped_count == 0 {
+        return format!(
+            "ok: {} headers, {} records, {} functions, {} enums, {} abi functions",
+            summary.headers,
+            summary.records,
+            summary.functions,
+            summary.enums,
+            summary.abi_functions
+        );
+    }
+
+    let mut output = format!(
+        "ok with warnings: {} headers, {} records, {} functions, {} enums, {} abi functions, {} skipped declarations\nskipped declarations:",
+        summary.headers,
+        summary.records,
+        summary.functions,
+        summary.enums,
+        summary.abi_functions,
+        skipped_count
+    );
+    for skipped in summary.skipped_declarations.iter().take(5) {
+        output.push_str(&format!("\n- {}: {}", skipped.cpp_name, skipped.reason));
+    }
+    if skipped_count > 5 {
+        output.push_str(&format!(
+            "\n... and {} more skipped declarations",
+            skipped_count - 5
+        ));
+    }
+
+    output
+}
+
+fn format_generation_summary(summary: &generator::GenerationSummary) -> String {
+    let file_count = summary.generated_file_count();
+    let file_label = if file_count == 1 { "file" } else { "files" };
+    let output_dirs = summary.output_dirs();
+
+    match output_dirs.as_slice() {
+        [dir] => format!("generated {file_count} {file_label} in {}", dir.display()),
+        [] => format!("generated {file_count} {file_label}"),
+        dirs => format!(
+            "generated {file_count} {file_label} in {} output dirs",
+            dirs.len()
+        ),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use clap::CommandFactory;
 
-    use super::Cli;
+    use super::{CheckSummary, Cli, format_check_summary, format_generation_summary};
+    use crate::generator::GenerationSummary;
+    use crate::ir::SkippedDeclaration;
 
     fn subcommand_help(name: &str) -> String {
         let mut command = Cli::command();
@@ -182,5 +247,92 @@ mod tests {
         assert!(ir_help.contains("Write IR to this file instead of stdout"));
         assert!(ir_help.contains("Choose the IR output format"));
         assert!(check_help.contains("Read generator settings from this YAML config file"));
+    }
+
+    #[test]
+    fn generation_summary_mentions_file_count_and_output_dir() {
+        let mut summary = GenerationSummary::default();
+        summary.record_for_test("examples/01-c-library/generated/calculator_wrapper.h");
+        summary.record_for_test("examples/01-c-library/generated/calculator_wrapper.cpp");
+        summary.record_for_test("examples/01-c-library/generated/calculator_wrapper.go");
+        summary.record_for_test("examples/01-c-library/generated/calculator_wrapper.ir.yaml");
+
+        assert_eq!(
+            format_generation_summary(&summary),
+            "generated 4 files in examples/01-c-library/generated"
+        );
+    }
+
+    #[test]
+    fn check_summary_without_skips_matches_existing_output() {
+        assert_eq!(
+            format_check_summary(&CheckSummary {
+                headers: 1,
+                records: 2,
+                functions: 3,
+                enums: 4,
+                abi_functions: 5,
+                skipped_declarations: &[],
+            }),
+            "ok: 1 headers, 2 records, 3 functions, 4 enums, 5 abi functions"
+        );
+    }
+
+    #[test]
+    fn check_summary_with_skips_includes_warning_and_details() {
+        let skipped = vec![
+            SkippedDeclaration {
+                cpp_name: "Value::operator==".to_string(),
+                reason: "operator declarations are unsupported in v1".to_string(),
+            },
+            SkippedDeclaration {
+                cpp_name: "set_callback".to_string(),
+                reason: "parameter `cb` type `void (*)(int)` uses a function pointer".to_string(),
+            },
+        ];
+
+        let output = format_check_summary(&CheckSummary {
+            headers: 1,
+            records: 1,
+            functions: 1,
+            enums: 0,
+            abi_functions: 3,
+            skipped_declarations: &skipped,
+        });
+
+        assert!(output.contains(
+            "ok with warnings: 1 headers, 1 records, 1 functions, 0 enums, 3 abi functions, 2 skipped declarations"
+        ));
+        assert!(output.contains("skipped declarations:"));
+        assert!(
+            output.contains("- Value::operator==: operator declarations are unsupported in v1")
+        );
+        assert!(output.contains(
+            "- set_callback: parameter `cb` type `void (*)(int)` uses a function pointer"
+        ));
+    }
+
+    #[test]
+    fn check_summary_with_many_skips_limits_details() {
+        let skipped = (1..=6)
+            .map(|index| SkippedDeclaration {
+                cpp_name: format!("declaration_{index}"),
+                reason: format!("reason {index}"),
+            })
+            .collect::<Vec<_>>();
+
+        let output = format_check_summary(&CheckSummary {
+            headers: 1,
+            records: 1,
+            functions: 1,
+            enums: 0,
+            abi_functions: 1,
+            skipped_declarations: &skipped,
+        });
+
+        assert!(output.contains("- declaration_1: reason 1"));
+        assert!(output.contains("- declaration_5: reason 5"));
+        assert!(!output.contains("- declaration_6: reason 6"));
+        assert!(output.contains("... and 1 more skipped declarations"));
     }
 }
