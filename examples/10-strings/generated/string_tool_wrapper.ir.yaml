@@ -1,7 +1,7 @@
 version: 1
 module: cgowrap
 source_headers:
-- /Users/kyh0703/Project/cgo-gen/examples/10-strings/input/string_tool.hpp
+- ../input/string_tool.hpp
 records:
 - cpp_type: StringTool
   handle_name: StringToolHandle

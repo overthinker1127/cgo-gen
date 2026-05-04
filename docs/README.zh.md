@@ -177,6 +177,7 @@ output:
 - `build_flags.go`
 
 这些 generated files 会被有意放在同一目录，方便 downstream `cgo` package 作为一个 package-local unit 编译。
+IR `source_headers` entries 会写成相对于 generated `.ir.yaml` file 的路径，因此 checked-in examples 不依赖 clone location。
 
 ## Go Module Output
 

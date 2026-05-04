@@ -1,7 +1,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
 };
 
 use anyhow::{Context, Result, bail};
@@ -272,7 +272,8 @@ fn generate_with_opaque_ownership(
     }
     write_go_package_metadata(&ctx)?;
     if write_ir {
-        let serialized = serde_yaml::to_string(ir)?;
+        let dump_ir = ir_with_source_headers_relative_to(ir, &ctx.output_dir());
+        let serialized = serde_yaml::to_string(&dump_ir)?;
         fs::write(&ir_path, serialized)
             .with_context(|| format!("failed to write ir dump: {}", ir_path.display()))?;
     }
@@ -287,10 +288,83 @@ fn trim_trailing_blank_lines(mut contents: String) -> String {
 }
 
 pub fn write_ir(path: &Path, ir: &IrModule) -> Result<()> {
-    let serialized = serde_yaml::to_string(ir)?;
+    let base_dir = path.parent().unwrap_or_else(|| Path::new("."));
+    write_ir_relative_to(path, ir, base_dir)
+}
+
+pub fn write_ir_relative_to(path: &Path, ir: &IrModule, base_dir: &Path) -> Result<()> {
+    let dump_ir = ir_with_source_headers_relative_to(ir, base_dir);
+    let serialized = serde_yaml::to_string(&dump_ir)?;
     fs::write(path, serialized)
         .with_context(|| format!("failed to write ir dump: {}", path.display()))?;
     Ok(())
+}
+
+pub fn ir_with_source_headers_relative_to(ir: &IrModule, base_dir: &Path) -> IrModule {
+    let mut dump_ir = ir.clone();
+    dump_ir.source_headers = dump_ir
+        .source_headers
+        .iter()
+        .map(|header| source_header_relative_to(header, base_dir))
+        .collect();
+    dump_ir
+}
+
+fn source_header_relative_to(header: &str, base_dir: &Path) -> String {
+    let header_path = Path::new(header);
+    let normalized_header = fs::canonicalize(header_path).unwrap_or_else(|_| header_path.into());
+    let normalized_base = fs::canonicalize(base_dir).unwrap_or_else(|_| base_dir.into());
+
+    relative_path(&normalized_header, &normalized_base)
+        .unwrap_or(normalized_header)
+        .display()
+        .to_string()
+        .replace('\\', "/")
+}
+
+fn relative_path(path: &Path, base_dir: &Path) -> Option<PathBuf> {
+    let path_components = path.components().collect::<Vec<_>>();
+    let base_components = base_dir.components().collect::<Vec<_>>();
+
+    if path_components.first().is_some_and(is_path_prefix)
+        && base_components.first().is_some_and(is_path_prefix)
+        && path_components.first() != base_components.first()
+    {
+        return None;
+    }
+
+    let mut shared = 0;
+    while shared < path_components.len()
+        && shared < base_components.len()
+        && path_components[shared] == base_components[shared]
+    {
+        shared += 1;
+    }
+
+    let mut relative = PathBuf::new();
+    for component in &base_components[shared..] {
+        if matches!(component, Component::Normal(_)) {
+            relative.push("..");
+        }
+    }
+    for component in &path_components[shared..] {
+        match component {
+            Component::Normal(value) => relative.push(value),
+            Component::ParentDir => relative.push(".."),
+            Component::CurDir => {}
+            Component::RootDir | Component::Prefix(_) => return None,
+        }
+    }
+
+    if relative.as_os_str().is_empty() {
+        Some(PathBuf::from("."))
+    } else {
+        Some(relative)
+    }
+}
+
+fn is_path_prefix(component: &Component<'_>) -> bool {
+    matches!(component, Component::Prefix(_) | Component::RootDir)
 }
 
 fn write_go_package_metadata(ctx: &PipelineContext) -> Result<()> {
@@ -816,6 +890,24 @@ fn same_canonical_path(left: &Path, right: &Path) -> bool {
     fs::canonicalize(left)
         .map(|path| path == right)
         .unwrap_or_else(|_| left == right)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::relative_path;
+
+    #[test]
+    fn source_header_paths_can_be_written_relative_to_generated_ir_dir() {
+        let header = Path::new("/repo/examples/01-c-library/input/calculator.h");
+        let generated_dir = Path::new("/repo/examples/01-c-library/generated");
+
+        assert_eq!(
+            relative_path(header, generated_dir).unwrap(),
+            Path::new("../input/calculator.h")
+        );
+    }
 }
 
 pub fn render_go_structs(ctx: &PipelineContext, ir: &IrModule) -> Result<Vec<GeneratedGoFile>> {

@@ -177,6 +177,7 @@ output:
 - `build_flags.go`
 
 이 파일들을 한 디렉터리에 모아두는 이유는 downstream `cgo` 패키지가 한 위치에서 함께 빌드할 수 있게 하기 위해서입니다.
+IR `source_headers` 항목은 생성된 `.ir.yaml` 파일 기준 상대경로로 기록되어, checked-in 예제가 clone 위치에 묶이지 않습니다.
 
 ## Go Module 출력
 

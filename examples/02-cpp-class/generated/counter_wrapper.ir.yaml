@@ -1,7 +1,7 @@
 version: 1
 module: cgowrap
 source_headers:
-- /home/overthinker/project/gogen/examples/02-cpp-class/input/counter.hpp
+- ../input/counter.hpp
 records:
 - cpp_type: metrics::Counter
   handle_name: metricsCounterHandle

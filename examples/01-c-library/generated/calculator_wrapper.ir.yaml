@@ -1,7 +1,7 @@
 version: 1
 module: cgowrap
 source_headers:
-- /home/overthinker/project/gogen/examples/01-c-library/input/calculator.h
+- ../input/calculator.h
 records: []
 opaque_types: []
 functions:

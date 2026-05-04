@@ -100,13 +100,23 @@ pub fn run() -> Result<()> {
             let ctx = PipelineContext::from_config_path(config)?;
             let (ctx, parsed) = generator::prepare_with_parsed(&ctx)?;
             let ir = ir::normalize(&ctx, &parsed)?;
-            match (output, format) {
+            match (output.as_ref(), format) {
                 (Some(path), IrFormat::Yaml) => generator::write_ir(&path, &ir)?,
                 (Some(path), IrFormat::Json) => {
-                    std::fs::write(path, serde_json::to_string_pretty(&ir)?)?
+                    let base_dir = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+                    let dump_ir = generator::ir_with_source_headers_relative_to(&ir, base_dir);
+                    std::fs::write(path, serde_json::to_string_pretty(&dump_ir)?)?
                 }
-                (None, IrFormat::Yaml) => print!("{}", serde_yaml::to_string(&ir)?),
-                (None, IrFormat::Json) => print!("{}", serde_json::to_string_pretty(&ir)?),
+                (None, IrFormat::Yaml) => {
+                    let dump_ir =
+                        generator::ir_with_source_headers_relative_to(&ir, &ctx.output_dir());
+                    print!("{}", serde_yaml::to_string(&dump_ir)?)
+                }
+                (None, IrFormat::Json) => {
+                    let dump_ir =
+                        generator::ir_with_source_headers_relative_to(&ir, &ctx.output_dir());
+                    print!("{}", serde_json::to_string_pretty(&dump_ir)?)
+                }
             }
         }
         Command::Check { config } => {

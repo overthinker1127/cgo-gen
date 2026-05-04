@@ -1,7 +1,7 @@
 version: 1
 module: cgowrap
 source_headers:
-- /Users/kyh0703/Project/cgo-gen/examples/08-overloading/input/overload_math.hpp
+- ../input/overload_math.hpp
 records:
 - cpp_type: OverloadMath
   handle_name: OverloadMathHandle

@@ -1,7 +1,7 @@
 version: 1
 module: cgowrap
 source_headers:
-- /home/overthinker/project/gogen/examples/06-owner-return/input/session_factory.hpp
+- ../input/session_factory.hpp
 records:
 - cpp_type: ManagedSession
   handle_name: ManagedSessionHandle

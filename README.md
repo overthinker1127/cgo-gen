@@ -177,6 +177,7 @@ When `--go-module` is set, it also writes:
 - `build_flags.go`
 
 The generated files are intentionally co-located so a downstream `cgo` package can compile them as one package-local unit.
+IR `source_headers` entries are written relative to the generated `.ir.yaml` file so checked-in examples are independent of the clone location.
 
 ## Go Module Output
 

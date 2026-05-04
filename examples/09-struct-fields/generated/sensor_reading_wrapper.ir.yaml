@@ -1,7 +1,7 @@
 version: 1
 module: cgowrap
 source_headers:
-- /Users/kyh0703/Project/cgo-gen/examples/09-struct-fields/input/sensor_reading.hpp
+- ../input/sensor_reading.hpp
 records:
 - cpp_type: SensorReading
   handle_name: SensorReadingHandle

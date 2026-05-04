@@ -177,6 +177,7 @@ output:
 - `build_flags.go`
 
 これらの file は downstream `cgo` package が同じ package-local unit として compile できるよう、意図的に同じ場所へまとめられます。
+IR `source_headers` entries は generated `.ir.yaml` file からの相対 path として記録されるため、checked-in examples は clone location に依存しません。
 
 ## Go Module Output
 

@@ -47,34 +47,11 @@ fn assert_generated_matches(example: &str, go_module: Option<&str>, expected_fil
     for relative in expected_files {
         let generated = fs::read_to_string(output_dir.join(relative)).unwrap();
         let committed = fs::read_to_string(root.join("generated").join(relative)).unwrap();
-        let generated = normalize_ir_source_header_prefixes(relative, &generated);
-        let committed = normalize_ir_source_header_prefixes(relative, &committed);
         assert_eq!(
             generated, committed,
             "{example}/generated/{relative} is stale"
         );
     }
-}
-
-fn normalize_ir_source_header_prefixes(relative: &str, contents: &str) -> String {
-    if !relative.ends_with(".ir.yaml") {
-        return contents.to_string();
-    }
-
-    contents
-        .lines()
-        .map(|line| {
-            let Some((prefix, suffix)) = line.split_once("/examples/") else {
-                return line.to_string();
-            };
-            if !prefix.trim_start().starts_with("- ") {
-                return line.to_string();
-            }
-            format!("- <repo>/examples/{suffix}")
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-        + "\n"
 }
 
 #[test]
