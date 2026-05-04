@@ -1,0 +1,122 @@
+version: 1
+module: cgowrap
+source_headers:
+- ../input/library_math.hpp
+records:
+- cpp_type: library_math::LibraryMath
+  handle_name: library_mathLibraryMathHandle
+  kind: class
+opaque_types:
+- name: library_mathLibraryMathHandle
+  cpp_type: library_math::LibraryMath
+functions:
+- name: cgowrap_library_math_LibraryMath_new
+  kind: constructor
+  cpp_name: library_math::LibraryMath
+  method_of: library_mathLibraryMathHandle
+  owner_cpp_type: library_math::LibraryMath
+  returns:
+    kind: opaque
+    cpp_type: library_math::LibraryMath
+    c_type: library_mathLibraryMathHandle*
+    handle: library_mathLibraryMathHandle
+  params:
+  - name: base
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+- name: cgowrap_library_math_LibraryMath_delete
+  kind: destructor
+  cpp_name: library_math::LibraryMath
+  method_of: library_mathLibraryMathHandle
+  owner_cpp_type: library_math::LibraryMath
+  returns:
+    kind: void
+    cpp_type: void
+    c_type: void
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: library_math::LibraryMath*
+      c_type: library_mathLibraryMathHandle*
+      handle: library_mathLibraryMathHandle
+- name: cgowrap_library_math_LibraryMath_add_static
+  kind: method
+  cpp_name: library_math::LibraryMath::add_static
+  method_of: library_mathLibraryMathHandle
+  owner_cpp_type: library_math::LibraryMath
+  is_const: true
+  returns:
+    kind: primitive
+    cpp_type: int
+    c_type: int
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: const library_math::LibraryMath*
+      c_type: const library_mathLibraryMathHandle*
+      handle: library_mathLibraryMathHandle
+  - name: value
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+- name: cgowrap_library_math_LibraryMath_multiply_shared
+  kind: method
+  cpp_name: library_math::LibraryMath::multiply_shared
+  method_of: library_mathLibraryMathHandle
+  owner_cpp_type: library_math::LibraryMath
+  is_const: true
+  returns:
+    kind: primitive
+    cpp_type: int
+    c_type: int
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: const library_math::LibraryMath*
+      c_type: const library_mathLibraryMathHandle*
+      handle: library_mathLibraryMathHandle
+  - name: value
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+- name: cgowrap_library_math_shared_multiplier
+  kind: function
+  cpp_name: library_math::shared_multiplier
+  returns:
+    kind: primitive
+    cpp_type: int
+    c_type: int
+  params:
+  - name: value
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+- name: cgowrap_library_math_static_offset
+  kind: function
+  cpp_name: library_math::static_offset
+  returns:
+    kind: primitive
+    cpp_type: int
+    c_type: int
+  params:
+  - name: value
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+enums: []
+constants: []
+callbacks: []
+support:
+  parser_backend: libclang
+  notes:
+  - Parsed with clang AST and normalized into a conservative C ABI IR.
+  - v1 intentionally rejects unsupported C++ constructs during type normalization.

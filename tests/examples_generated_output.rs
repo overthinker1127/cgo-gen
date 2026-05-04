@@ -166,4 +166,16 @@ fn checked_in_example_generated_outputs_are_current() {
             "string_tool_wrapper.ir.yaml",
         ],
     );
+    assert_generated_matches(
+        "examples/11-static-shared-library",
+        Some("example.com/cgo-gen/examples/11-static-shared-library/generated"),
+        &[
+            "library_math_wrapper.h",
+            "library_math_wrapper.cpp",
+            "library_math_wrapper.go",
+            "library_math_wrapper.ir.yaml",
+            "go.mod",
+            "build_flags.go",
+        ],
+    );
 }

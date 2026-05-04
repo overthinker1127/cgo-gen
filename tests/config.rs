@@ -872,6 +872,7 @@ input:
     - -lfoo
     - -L
     - deps/lib
+    - lib/libbar.a
 output:
   dir: gen
 "#,
@@ -887,6 +888,7 @@ output:
             "-lfoo".to_string(),
             "-L".to_string(),
             normalize_expected_path(&dir.join("deps/lib")),
+            normalize_expected_path(&dir.join("lib/libbar.a")),
         ]
     );
 }
@@ -959,6 +961,7 @@ input:
   ldflags:
     - -Ldeps/lib
     - -lfoo
+    - lib/libbar.a
 output:
   dir: gen
 "#,
@@ -974,5 +977,7 @@ output:
     let resolved_lib_dir = normalize_expected_path(&dir.join("deps/lib"));
 
     assert!(build_flags.contains("#cgo LDFLAGS:"));
-    assert!(build_flags.contains(&format!("-L{resolved_lib_dir} -lfoo")));
+    assert!(build_flags.contains(&format!(
+        "-L{resolved_lib_dir} -lfoo ${{SRCDIR}}/../lib/libbar.a"
+    )));
 }

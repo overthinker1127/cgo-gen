@@ -87,7 +87,11 @@ fn resolve_ldflags(flags: &mut Vec<String>, base_dir: &Path) -> Result<()> {
             resolved.push(arg.clone());
             if let Some(value) = flags.get(index + 1) {
                 let expanded = expand_env_vars_in_str(value, "input.ldflags")?;
-                resolved.push(resolve_relative_clang_path_arg(&expanded, base_dir)?);
+                resolved.push(resolve_relative_config_path_arg(
+                    &expanded,
+                    base_dir,
+                    "input.ldflags",
+                )?);
                 index += 2;
                 continue;
             }
@@ -99,18 +103,43 @@ fn resolve_ldflags(flags: &mut Vec<String>, base_dir: &Path) -> Result<()> {
             let expanded = expand_env_vars_in_str(value, "input.ldflags")?;
             resolved.push(format!(
                 "-L{}",
-                resolve_relative_clang_path_arg(&expanded, base_dir)?
+                resolve_relative_config_path_arg(&expanded, base_dir, "input.ldflags")?
             ));
             index += 1;
             continue;
         }
 
-        resolved.push(expand_env_vars_in_str(arg, "input.ldflags")?);
+        let expanded = expand_env_vars_in_str(arg, "input.ldflags")?;
+        if is_relative_library_file_arg(&expanded) {
+            resolved.push(resolve_relative_config_path_arg(
+                &expanded,
+                base_dir,
+                "input.ldflags",
+            )?);
+        } else {
+            resolved.push(expanded);
+        }
         index += 1;
     }
 
     *flags = resolved;
     Ok(())
+}
+
+fn is_relative_library_file_arg(value: &str) -> bool {
+    if value.starts_with('-') {
+        return false;
+    }
+
+    let path = Path::new(value);
+    if path.is_absolute() {
+        return false;
+    }
+
+    matches!(
+        path.extension().and_then(|value| value.to_str()),
+        Some("a" | "so" | "dylib" | "o" | "obj")
+    )
 }
 
 fn resolve_relative_clang_args(args: &mut Vec<String>, base_dir: &Path) -> Result<()> {
@@ -158,7 +187,11 @@ fn resolve_relative_clang_args(args: &mut Vec<String>, base_dir: &Path) -> Resul
 }
 
 fn resolve_relative_clang_path_arg(value: &str, base_dir: &Path) -> Result<String> {
-    let value = expand_env_vars_in_str(value, "input.clang_args")?;
+    resolve_relative_config_path_arg(value, base_dir, "input.clang_args")
+}
+
+fn resolve_relative_config_path_arg(value: &str, base_dir: &Path, context: &str) -> Result<String> {
+    let value = expand_env_vars_in_str(value, context)?;
 
     if value.is_empty() {
         return Ok(String::new());

@@ -1,0 +1,13 @@
+version: 1
+
+input:
+  dir: input
+  clang_args:
+    - -std=c++17
+    - -Iinput
+  ldflags:
+    - lib/libnative_static_math.a
+    - lib/libnative_shared_multiplier.so
+
+output:
+  dir: generated

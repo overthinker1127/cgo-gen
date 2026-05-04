@@ -456,7 +456,7 @@ fn render_build_flags(ctx: &PipelineContext) -> String {
     let package_name = go_package_name(&ctx.output.dir);
     let cxxflags = exported_cxxflags(ctx);
     let cxxflags_line = cxxflags.join(" ");
-    let ldflags = &ctx.input.ldflags;
+    let ldflags = exported_ldflags(ctx);
     if ldflags.is_empty() {
         format!(
             "package {package_name}\n\n/*\n#cgo CFLAGS: -I${{SRCDIR}}\n#cgo CXXFLAGS: {cxxflags_line}\n*/\nimport \"C\"\n"
@@ -467,6 +467,48 @@ fn render_build_flags(ctx: &PipelineContext) -> String {
             "package {package_name}\n\n/*\n#cgo CFLAGS: -I${{SRCDIR}}\n#cgo CXXFLAGS: {cxxflags_line}\n#cgo LDFLAGS: {ldflags_line}\n*/\nimport \"C\"\n"
         )
     }
+}
+
+fn exported_ldflags(ctx: &PipelineContext) -> Vec<String> {
+    ctx.input
+        .ldflags
+        .iter()
+        .map(|flag| exported_ldflag(flag, &ctx.output_dir()))
+        .collect()
+}
+
+fn exported_ldflag(flag: &str, output_dir: &Path) -> String {
+    if !is_direct_library_file_ldflag(flag) || flag.contains('$') {
+        return flag.to_string();
+    }
+
+    let path = Path::new(flag);
+    if !path.is_absolute() {
+        return format!("${{SRCDIR}}/{flag}");
+    }
+
+    let output_dir = absolute_output_dir(output_dir);
+    relative_path_from(path, &output_dir)
+        .and_then(|relative| path_to_cgo_string(&relative))
+        .map(|relative| {
+            if relative.is_empty() {
+                "${SRCDIR}".to_string()
+            } else {
+                format!("${{SRCDIR}}/{relative}")
+            }
+        })
+        .unwrap_or_else(|| flag.to_string())
+}
+
+fn is_direct_library_file_ldflag(flag: &str) -> bool {
+    if flag.starts_with('-') {
+        return false;
+    }
+
+    matches!(
+        Path::new(flag).extension().and_then(|value| value.to_str()),
+        Some("a" | "so" | "dylib" | "o" | "obj")
+    )
 }
 
 fn exported_cxxflags(ctx: &PipelineContext) -> Vec<String> {
