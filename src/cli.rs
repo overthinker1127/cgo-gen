@@ -18,24 +18,56 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    #[command(about = "Generate C ABI, C++, and Go wrapper files")]
     Generate {
-        #[arg(long)]
+        #[arg(
+            long,
+            value_name = "PATH",
+            help = "Read generator settings from this YAML config file"
+        )]
         config: PathBuf,
-        #[arg(long, default_value_t = false)]
+        #[arg(
+            long,
+            default_value_t = false,
+            help = "Also write a normalized <name>_wrapper.ir.yaml dump next to generated files"
+        )]
         dump_ir: bool,
-        #[arg(long)]
+        #[arg(
+            long,
+            value_name = "MODULE",
+            help = "Write go.mod and build_flags.go in output.dir for this Go module path"
+        )]
         go_module: Option<String>,
     },
+    #[command(about = "Print or write the normalized intermediate representation")]
     Ir {
-        #[arg(long)]
+        #[arg(
+            long,
+            value_name = "PATH",
+            help = "Read generator settings from this YAML config file"
+        )]
         config: PathBuf,
-        #[arg(long)]
+        #[arg(
+            long,
+            value_name = "PATH",
+            help = "Write IR to this file instead of stdout"
+        )]
         output: Option<PathBuf>,
-        #[arg(long, value_enum, default_value_t = IrFormat::Yaml)]
+        #[arg(
+            long,
+            value_enum,
+            default_value_t = IrFormat::Yaml,
+            help = "Choose the IR output format"
+        )]
         format: IrFormat,
     },
+    #[command(about = "Validate config and supported API shape without writing output files")]
     Check {
-        #[arg(long)]
+        #[arg(
+            long,
+            value_name = "PATH",
+            help = "Read generator settings from this YAML config file"
+        )]
         config: PathBuf,
     },
 }
@@ -92,4 +124,53 @@ pub fn run() -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::CommandFactory;
+
+    use super::Cli;
+
+    fn subcommand_help(name: &str) -> String {
+        let mut command = Cli::command();
+        command
+            .find_subcommand_mut(name)
+            .expect("subcommand should exist")
+            .render_help()
+            .to_string()
+    }
+
+    #[test]
+    fn subcommands_have_about_text() {
+        let help = Cli::command().render_help().to_string();
+
+        assert!(help.contains("generate  Generate C ABI, C++, and Go wrapper files"));
+        assert!(
+            help.contains("ir        Print or write the normalized intermediate representation")
+        );
+        assert!(help.contains(
+            "check     Validate config and supported API shape without writing output files"
+        ));
+    }
+
+    #[test]
+    fn generate_help_explains_options() {
+        let help = subcommand_help("generate");
+
+        assert!(help.contains("Read generator settings from this YAML config file"));
+        assert!(help.contains("Also write a normalized <name>_wrapper.ir.yaml dump"));
+        assert!(help.contains("Write go.mod and build_flags.go in output.dir"));
+    }
+
+    #[test]
+    fn ir_and_check_help_explain_options() {
+        let ir_help = subcommand_help("ir");
+        let check_help = subcommand_help("check");
+
+        assert!(ir_help.contains("Read generator settings from this YAML config file"));
+        assert!(ir_help.contains("Write IR to this file instead of stdout"));
+        assert!(ir_help.contains("Choose the IR output format"));
+        assert!(check_help.contains("Read generator settings from this YAML config file"));
+    }
 }
