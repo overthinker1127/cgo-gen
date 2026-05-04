@@ -2349,7 +2349,8 @@ fn raw_safe_model_handle_name(cpp_type: &str) -> Option<String> {
     Some(format!("{}Handle", flatten_qualified_cpp_name(&base)))
 }
 
-/// "T[N]" 패턴에서 (elem_type_str, size) 추출. const 접두사 제거 후 처리.
+/// Extracts `(elem_type_str, size)` from a `T[N]` pattern after removing a
+/// leading `const` prefix.
 fn parse_array_type(value: &str) -> Option<(&str, usize)> {
     let trimmed = value.trim().trim_start_matches("const ").trim();
     let bracket = trimmed.rfind('[')?;
@@ -2362,12 +2363,12 @@ fn parse_array_type(value: &str) -> Option<(&str, usize)> {
     Some((elem, n))
 }
 
-/// cpp_type에서 배열 크기 추출 (FixedArray / FixedModelArray용)
+/// Extracts the array length from `cpp_type` for fixed arrays.
 pub fn fixed_array_length(cpp_type: &str) -> Option<usize> {
     parse_array_type(cpp_type).map(|(_, n)| n)
 }
 
-/// cpp_type에서 원소 타입 문자열 추출 (FixedArray용)
+/// Extracts the element type string from `cpp_type` for fixed arrays.
 pub fn fixed_array_elem_type(cpp_type: &str) -> Option<&str> {
     parse_array_type(cpp_type).map(|(t, _)| t)
 }

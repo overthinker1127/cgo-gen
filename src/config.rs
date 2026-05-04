@@ -208,7 +208,8 @@ fn resolve_relative_config_path_arg(value: &str, base_dir: &Path, context: &str)
     ))
 }
 
-/// `-L${ICORE_BASE}/lib` 처럼 문자열 중간에 포함된 `${VAR}` / `$(VAR)` / `$VAR` 패턴을 모두 치환합니다.
+/// Expands all `${VAR}`, `$(VAR)`, and `$VAR` tokens embedded in a string,
+/// such as `-L${ICORE_BASE}/lib`.
 fn expand_env_vars_in_str(value: &str, context: &str) -> Result<String> {
     let mut result = String::with_capacity(value.len());
     let mut rest = value;
@@ -217,7 +218,7 @@ fn expand_env_vars_in_str(value: &str, context: &str) -> Result<String> {
         result.push_str(&rest[..dollar]);
         rest = &rest[dollar..];
 
-        // ${VAR} 형식
+        // ${VAR} form
         if let Some(inner) = rest.strip_prefix("${") {
             if let Some(end) = inner.find('}') {
                 let name = &inner[..end];
@@ -241,7 +242,7 @@ fn expand_env_vars_in_str(value: &str, context: &str) -> Result<String> {
             }
         }
 
-        // $(VAR) 형식
+        // $(VAR) form
         if let Some(inner) = rest.strip_prefix("$(") {
             if let Some(end) = inner.find(')') {
                 let name = &inner[..end];
@@ -265,7 +266,7 @@ fn expand_env_vars_in_str(value: &str, context: &str) -> Result<String> {
             }
         }
 
-        // $VAR 형식
+        // $VAR form
         {
             let tail = &rest[1..];
             let name_len = tail
@@ -289,7 +290,7 @@ fn expand_env_vars_in_str(value: &str, context: &str) -> Result<String> {
             }
         }
 
-        // 치환 못한 $ 는 그대로
+        // Leave an unexpanded `$` as-is.
         result.push('$');
         rest = &rest[1..];
     }
