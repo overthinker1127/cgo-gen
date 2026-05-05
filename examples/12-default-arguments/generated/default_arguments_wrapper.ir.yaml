@@ -10,27 +10,6 @@ opaque_types:
 - name: DefaultCounterHandle
   cpp_type: DefaultCounter
 functions:
-- name: cgowrap_DefaultCounter_new__int_int
-  kind: constructor
-  cpp_name: DefaultCounter
-  method_of: DefaultCounterHandle
-  owner_cpp_type: DefaultCounter
-  returns:
-    kind: opaque
-    cpp_type: DefaultCounter
-    c_type: DefaultCounterHandle*
-    handle: DefaultCounterHandle
-  params:
-  - name: start
-    ty:
-      kind: primitive
-      cpp_type: int
-      c_type: int
-  - name: step
-    ty:
-      kind: primitive
-      cpp_type: int
-      c_type: int
 - name: cgowrap_DefaultCounter_new__int
   kind: constructor
   cpp_name: DefaultCounter
@@ -140,29 +119,6 @@ functions:
       kind: primitive
       cpp_type: int
       c_type: int
-- name: cgowrap_Clamp__int_int_int
-  kind: function
-  cpp_name: Clamp
-  returns:
-    kind: primitive
-    cpp_type: int
-    c_type: int
-  params:
-  - name: value
-    ty:
-      kind: primitive
-      cpp_type: int
-      c_type: int
-  - name: min
-    ty:
-      kind: primitive
-      cpp_type: int
-      c_type: int
-  - name: max
-    ty:
-      kind: primitive
-      cpp_type: int
-      c_type: int
 - name: cgowrap_Clamp__int_int
   kind: function
   cpp_name: Clamp
@@ -176,7 +132,7 @@ functions:
       kind: primitive
       cpp_type: int
       c_type: int
-  - name: min
+  - name: max
     ty:
       kind: primitive
       cpp_type: int

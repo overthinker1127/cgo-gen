@@ -10,12 +10,8 @@ import "errors"
 
 import "fmt"
 
-func ClampInt32Int32Int32(value int32, min int32, max int32) int32 {
-    return int32(C.cgowrap_Clamp__int_int_int(C.int(value), C.int(min), C.int(max)))
-}
-
-func ClampInt32Int32(value int32, min int32) int32 {
-    return int32(C.cgowrap_Clamp__int_int(C.int(value), C.int(min)))
+func ClampInt32Int32(value int32, max int32) int32 {
+    return int32(C.cgowrap_Clamp__int_int(C.int(value), C.int(max)))
 }
 
 func ClampInt32(value int32) int32 {
@@ -39,15 +35,6 @@ func Clamp(args ...any) (int32, error) {
                 return ClampInt32Int32(arg0, arg1), nil
             }
         }
-    case 3:
-        {
-            arg0, ok0 := args[0].(int32)
-            arg1, ok1 := args[1].(int32)
-            arg2, ok2 := args[2].(int32)
-            if ok0 && ok1 && ok2 {
-                return ClampInt32Int32Int32(arg0, arg1, arg2), nil
-            }
-        }
     }
     return 0, fmt.Errorf("no matching overload for Clamp")
 }
@@ -56,14 +43,6 @@ type DefaultCounter struct {
     ptr *C.DefaultCounterHandle
     owned bool
     root *bool
-}
-
-func NewDefaultCounterWithStartStep(start int32, step int32) (*DefaultCounter, error) {
-    ptr := C.cgowrap_DefaultCounter_new__int_int(C.int(start), C.int(step))
-    if ptr == nil {
-        return nil, errors.New("wrapper returned nil facade handle")
-    }
-    return newOwnedDefaultCounter(ptr), nil
 }
 
 func NewDefaultCounterWithStart(start int32) (*DefaultCounter, error) {

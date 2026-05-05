@@ -1,9 +1,6 @@
 #pragma once
 
-inline int Clamp(int value, int min = 0, int max = 100) {
-    if (value < min) {
-        return min;
-    }
+inline int Clamp(int value, int max = 100) {
     if (value > max) {
         return max;
     }
@@ -12,8 +9,8 @@ inline int Clamp(int value, int min = 0, int max = 100) {
 
 class DefaultCounter {
 public:
-    explicit DefaultCounter(int start = 0, int step = 1)
-        : value_(start), step_(step) {}
+    explicit DefaultCounter(int start = 0)
+        : value_(start) {}
 
     ~DefaultCounter() = default;
 
@@ -22,11 +19,10 @@ public:
     }
 
     int Add(int value, int multiplier = 1) {
-        value_ += value * multiplier + step_;
+        value_ += value * multiplier;
         return value_;
     }
 
 private:
     int value_;
-    int step_;
 };
