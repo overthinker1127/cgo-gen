@@ -178,4 +178,14 @@ fn checked_in_example_generated_outputs_are_current() {
             "build_flags.go",
         ],
     );
+    assert_generated_matches(
+        "examples/12-default-arguments",
+        None,
+        &[
+            "default_arguments_wrapper.h",
+            "default_arguments_wrapper.cpp",
+            "default_arguments_wrapper.go",
+            "default_arguments_wrapper.ir.yaml",
+        ],
+    );
 }

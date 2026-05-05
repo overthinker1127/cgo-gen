@@ -330,6 +330,21 @@ fn resolve_path(path: &mut PathBuf, base_dir: &Path) {
     }
 }
 
+fn resolve_config_base_dir(config_path: &Path) -> PathBuf {
+    let base_dir = config_path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let absolute = if base_dir.is_absolute() {
+        base_dir.to_path_buf()
+    } else {
+        env::current_dir()
+            .map(|cwd| cwd.join(base_dir))
+            .unwrap_or_else(|_| base_dir.to_path_buf())
+    };
+    absolute.canonicalize().unwrap_or(absolute)
+}
+
 fn push_unique_path(paths: &mut Vec<PathBuf>, value: PathBuf) {
     if !paths.iter().any(|candidate| candidate == &value) {
         paths.push(value);
@@ -415,15 +430,15 @@ impl Config {
     }
 
     fn resolve_relative_paths(&mut self, config_path: &Path) -> Result<()> {
-        let base_dir = config_path.parent().unwrap_or_else(|| Path::new("."));
+        let base_dir = resolve_config_base_dir(config_path);
         if let Some(dir) = &mut self.input.dir {
-            resolve_path(dir, base_dir);
+            resolve_path(dir, &base_dir);
         }
         for header in &mut self.input.headers {
-            resolve_path(header, base_dir);
+            resolve_path(header, &base_dir);
         }
-        resolve_relative_clang_args(&mut self.input.clang_args, base_dir)?;
-        resolve_ldflags(&mut self.input.ldflags, base_dir)?;
+        resolve_relative_clang_args(&mut self.input.clang_args, &base_dir)?;
+        resolve_ldflags(&mut self.input.ldflags, &base_dir)?;
         if self.output.dir.is_relative() {
             self.output.dir = base_dir.join(&self.output.dir);
         }

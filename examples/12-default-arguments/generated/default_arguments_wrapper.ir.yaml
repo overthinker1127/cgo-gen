@@ -1,0 +1,204 @@
+version: 1
+module: cgowrap
+source_headers:
+- ../input/default_arguments.hpp
+records:
+- cpp_type: DefaultCounter
+  handle_name: DefaultCounterHandle
+  kind: class
+opaque_types:
+- name: DefaultCounterHandle
+  cpp_type: DefaultCounter
+functions:
+- name: cgowrap_DefaultCounter_new__int_int
+  kind: constructor
+  cpp_name: DefaultCounter
+  method_of: DefaultCounterHandle
+  owner_cpp_type: DefaultCounter
+  returns:
+    kind: opaque
+    cpp_type: DefaultCounter
+    c_type: DefaultCounterHandle*
+    handle: DefaultCounterHandle
+  params:
+  - name: start
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+  - name: step
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+- name: cgowrap_DefaultCounter_new__int
+  kind: constructor
+  cpp_name: DefaultCounter
+  method_of: DefaultCounterHandle
+  owner_cpp_type: DefaultCounter
+  returns:
+    kind: opaque
+    cpp_type: DefaultCounter
+    c_type: DefaultCounterHandle*
+    handle: DefaultCounterHandle
+  params:
+  - name: start
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+- name: cgowrap_DefaultCounter_new__void
+  kind: constructor
+  cpp_name: DefaultCounter
+  method_of: DefaultCounterHandle
+  owner_cpp_type: DefaultCounter
+  returns:
+    kind: opaque
+    cpp_type: DefaultCounter
+    c_type: DefaultCounterHandle*
+    handle: DefaultCounterHandle
+  params: []
+- name: cgowrap_DefaultCounter_delete
+  kind: destructor
+  cpp_name: ~DefaultCounter
+  method_of: DefaultCounterHandle
+  owner_cpp_type: DefaultCounter
+  returns:
+    kind: void
+    cpp_type: void
+    c_type: void
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: DefaultCounter*
+      c_type: DefaultCounterHandle*
+      handle: DefaultCounterHandle
+- name: cgowrap_DefaultCounter_Value
+  kind: method
+  cpp_name: DefaultCounter::Value
+  method_of: DefaultCounterHandle
+  owner_cpp_type: DefaultCounter
+  is_const: true
+  returns:
+    kind: primitive
+    cpp_type: int
+    c_type: int
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: const DefaultCounter*
+      c_type: const DefaultCounterHandle*
+      handle: DefaultCounterHandle
+- name: cgowrap_DefaultCounter_Add__int_int_mut
+  kind: method
+  cpp_name: DefaultCounter::Add
+  method_of: DefaultCounterHandle
+  owner_cpp_type: DefaultCounter
+  is_const: false
+  returns:
+    kind: primitive
+    cpp_type: int
+    c_type: int
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: DefaultCounter*
+      c_type: DefaultCounterHandle*
+      handle: DefaultCounterHandle
+  - name: value
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+  - name: multiplier
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+- name: cgowrap_DefaultCounter_Add__int_mut
+  kind: method
+  cpp_name: DefaultCounter::Add
+  method_of: DefaultCounterHandle
+  owner_cpp_type: DefaultCounter
+  is_const: false
+  returns:
+    kind: primitive
+    cpp_type: int
+    c_type: int
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: DefaultCounter*
+      c_type: DefaultCounterHandle*
+      handle: DefaultCounterHandle
+  - name: value
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+- name: cgowrap_Clamp__int_int_int
+  kind: function
+  cpp_name: Clamp
+  returns:
+    kind: primitive
+    cpp_type: int
+    c_type: int
+  params:
+  - name: value
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+  - name: min
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+  - name: max
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+- name: cgowrap_Clamp__int_int
+  kind: function
+  cpp_name: Clamp
+  returns:
+    kind: primitive
+    cpp_type: int
+    c_type: int
+  params:
+  - name: value
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+  - name: min
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+- name: cgowrap_Clamp__int
+  kind: function
+  cpp_name: Clamp
+  returns:
+    kind: primitive
+    cpp_type: int
+    c_type: int
+  params:
+  - name: value
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+enums: []
+constants: []
+callbacks: []
+support:
+  parser_backend: libclang
+  notes:
+  - Parsed with clang AST and normalized into a conservative C ABI IR.
+  - v1 intentionally rejects unsupported C++ constructs during type normalization.

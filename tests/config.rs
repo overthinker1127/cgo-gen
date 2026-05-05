@@ -880,6 +880,7 @@ output:
     .unwrap();
 
     let config = Config::load(&config_path).unwrap();
+    let canonical_dir = dir.canonicalize().unwrap_or_else(|_| dir.clone());
 
     assert_eq!(
         config.input.ldflags,
@@ -888,8 +889,41 @@ output:
             "-lfoo".to_string(),
             "-L".to_string(),
             normalize_expected_path(&dir.join("deps/lib")),
-            normalize_expected_path(&dir.join("lib/libbar.a")),
+            normalize_expected_path(&canonical_dir.join("lib/libbar.a")),
         ]
+    );
+}
+
+#[test]
+fn resolves_missing_relative_library_ldflags_from_canonical_config_dir() {
+    let dir = temp_test_dir("missing_relative_ldflags");
+    fs::create_dir_all(dir.join("include")).unwrap();
+    fs::write(dir.join("include/foo.hpp"), "int foo();").unwrap();
+
+    let config_path = dir.join("cppgo-wrap.yaml");
+    fs::write(
+        &config_path,
+        r#"
+version: 1
+input:
+  dir: include
+  ldflags:
+    - lib/libmissing.a
+output:
+  dir: gen
+"#,
+    )
+    .unwrap();
+
+    let config = Config::load(&config_path).unwrap();
+    let expected = dir
+        .canonicalize()
+        .unwrap_or_else(|_| dir.clone())
+        .join("lib/libmissing.a");
+
+    assert_eq!(
+        config.input.ldflags,
+        vec![normalize_expected_path(&expected)]
     );
 }
 
