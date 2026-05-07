@@ -243,6 +243,7 @@ For large libraries, either put the small header surface you want to wrap in an 
 - `const char*`, `char*`, `std::string`, and `std::string_view`
 - fixed-size primitive and model arrays
 - primitive pointer/reference write-back in Go
+- recognized model by-value parameters and returns through handle-backed wrappers
 - named callback typedefs used by supported APIs
 - `struct timeval*` and `struct timeval&`
 - handle-backed Go wrappers for supported object paths
@@ -255,7 +256,7 @@ For large libraries, either put the small header surface you want to wrap in an 
 - anonymous classes
 - exception translation
 - advanced inheritance modeling
-- raw-unsafe by-value object parameters or returns
+- unknown or raw-unsafe by-value object parameters or returns outside recognized model paths
 
 Unsupported declarations may be skipped instead of aborting the whole run. When that happens, the reason is recorded in `support.skipped_declarations` in the normalized IR.
 
