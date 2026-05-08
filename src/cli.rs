@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{collections::BTreeMap, path::PathBuf};
 
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
@@ -163,7 +163,7 @@ fn format_check_summary(summary: &CheckSummary<'_>) -> String {
     }
 
     let mut output = format!(
-        "ok with warnings: {} headers, {} records, {} functions, {} enums, {} abi functions, {} skipped declarations\nskipped declarations:",
+        "ok with warnings: {} headers, {} records, {} functions, {} enums, {} abi functions, {} skipped declarations\nwarning: skipped declarations are omitted from generated wrappers and Go facades\nskip summary:",
         summary.headers,
         summary.records,
         summary.functions,
@@ -171,8 +171,20 @@ fn format_check_summary(summary: &CheckSummary<'_>) -> String {
         summary.abi_functions,
         skipped_count
     );
+    for (category, count) in skipped_category_counts(summary.skipped_declarations) {
+        let category = skipped_category_for_label(&category);
+        output.push_str(&format!(
+            "\n- {}: {} skipped; {}",
+            category.label, count, category.action
+        ));
+    }
+    output.push_str("\nskipped declaration details:");
     for skipped in summary.skipped_declarations.iter().take(5) {
-        output.push_str(&format!("\n- {}: {}", skipped.cpp_name, skipped.reason));
+        let category = skipped_category(&skipped.reason);
+        output.push_str(&format!(
+            "\n- [{}] {}: {}\n  action: {}",
+            category.label, skipped.cpp_name, skipped.reason, category.action
+        ));
     }
     if skipped_count > 5 {
         output.push_str(&format!(
@@ -182,6 +194,67 @@ fn format_check_summary(summary: &CheckSummary<'_>) -> String {
     }
 
     output
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SkippedCategory {
+    label: &'static str,
+    action: &'static str,
+}
+
+fn skipped_category_counts(skipped: &[ir::SkippedDeclaration]) -> BTreeMap<&'static str, usize> {
+    let mut counts = BTreeMap::new();
+    for item in skipped {
+        *counts
+            .entry(skipped_category(&item.reason).label)
+            .or_insert(0) += 1;
+    }
+    counts
+}
+
+fn skipped_category_for_label(label: &str) -> SkippedCategory {
+    match label {
+        "abstract class" => SkippedCategory {
+            label: "abstract class",
+            action: "instantiate a concrete subclass or expose factory methods returning pointers",
+        },
+        "double pointer" => SkippedCategory {
+            label: "double pointer",
+            action: "replace pointer-to-pointer output with a supported return value or adapter",
+        },
+        "function pointer" => SkippedCategory {
+            label: "function pointer",
+            action: "use a named callback typedef or an adapter function",
+        },
+        "operator" => SkippedCategory {
+            label: "operator",
+            action: "expose a named method or free-function adapter instead",
+        },
+        "raw by-value object" => SkippedCategory {
+            label: "raw by-value object",
+            action: "pass objects by pointer/reference or expose a handle-backed adapter",
+        },
+        _ => SkippedCategory {
+            label: "unsupported type",
+            action: "inspect the IR and narrow the wrapped surface or add an adapter header",
+        },
+    }
+}
+
+fn skipped_category(reason: &str) -> SkippedCategory {
+    if reason.contains("abstract class") {
+        skipped_category_for_label("abstract class")
+    } else if reason.contains("double-pointer") {
+        skipped_category_for_label("double pointer")
+    } else if reason.contains("function pointer") {
+        skipped_category_for_label("function pointer")
+    } else if reason.contains("operator declarations") {
+        skipped_category_for_label("operator")
+    } else if reason.contains("by-value") {
+        skipped_category_for_label("raw by-value object")
+    } else {
+        skipped_category_for_label("unsupported type")
+    }
 }
 
 fn format_generation_summary(summary: &generator::GenerationSummary) -> String {
@@ -303,13 +376,26 @@ mod tests {
         assert!(output.contains(
             "ok with warnings: 1 headers, 1 records, 1 functions, 0 enums, 3 abi functions, 2 skipped declarations"
         ));
-        assert!(output.contains("skipped declarations:"));
+        assert!(output.contains(
+            "warning: skipped declarations are omitted from generated wrappers and Go facades"
+        ));
+        assert!(output.contains("skip summary:"));
+        assert!(output.contains(
+            "- function pointer: 1 skipped; use a named callback typedef or an adapter function"
+        ));
+        assert!(output.contains(
+            "- operator: 1 skipped; expose a named method or free-function adapter instead"
+        ));
+        assert!(output.contains("skipped declaration details:"));
         assert!(
-            output.contains("- Value::operator==: operator declarations are unsupported in v1")
+            output.contains(
+                "[operator] Value::operator==: operator declarations are unsupported in v1"
+            )
         );
         assert!(output.contains(
-            "- set_callback: parameter `cb` type `void (*)(int)` uses a function pointer"
+            "[function pointer] set_callback: parameter `cb` type `void (*)(int)` uses a function pointer"
         ));
+        assert!(output.contains("action: use a named callback typedef or an adapter function"));
     }
 
     #[test]
@@ -330,9 +416,9 @@ mod tests {
             skipped_declarations: &skipped,
         });
 
-        assert!(output.contains("- declaration_1: reason 1"));
-        assert!(output.contains("- declaration_5: reason 5"));
-        assert!(!output.contains("- declaration_6: reason 6"));
+        assert!(output.contains("[unsupported type] declaration_1: reason 1"));
+        assert!(output.contains("[unsupported type] declaration_5: reason 5"));
+        assert!(!output.contains("[unsupported type] declaration_6: reason 6"));
         assert!(output.contains("... and 1 more skipped declarations"));
     }
 }
