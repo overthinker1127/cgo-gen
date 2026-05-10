@@ -992,24 +992,6 @@ fn same_canonical_path(left: &Path, right: &Path) -> bool {
         .unwrap_or_else(|_| left == right)
 }
 
-#[cfg(test)]
-mod tests {
-    use std::path::Path;
-
-    use super::relative_path;
-
-    #[test]
-    fn source_header_paths_can_be_written_relative_to_generated_ir_dir() {
-        let header = Path::new("/repo/examples/01-c-library/input/calculator.h");
-        let generated_dir = Path::new("/repo/examples/01-c-library/generated");
-
-        assert_eq!(
-            relative_path(header, generated_dir).unwrap(),
-            Path::new("../input/calculator.h")
-        );
-    }
-}
-
 pub fn render_go_structs(ctx: &PipelineContext, ir: &IrModule) -> Result<Vec<GeneratedGoFile>> {
     facade::render_go_facade(ctx, ir, &BTreeSet::new())
 }
@@ -1763,4 +1745,22 @@ fn render_string_free(_ctx: &PipelineContext) -> String {
         "void {}_string_free(char* value) {{\n    free(value);\n}}\n",
         WRAPPER_PREFIX
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::relative_path;
+
+    #[test]
+    fn source_header_paths_can_be_written_relative_to_generated_ir_dir() {
+        let header = Path::new("/repo/examples/01-c-library/input/calculator.h");
+        let generated_dir = Path::new("/repo/examples/01-c-library/generated");
+
+        assert_eq!(
+            relative_path(header, generated_dir).unwrap(),
+            Path::new("../input/calculator.h")
+        );
+    }
 }
