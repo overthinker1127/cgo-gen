@@ -81,11 +81,11 @@ pub(crate) fn render_go_facade_with_owned_opaques(
         .functions
         .iter()
         .filter(|function| function.kind == IrFunctionKind::Function)
-        .filter(|function| free_function_supported(&config, function))
+        .filter(|function| free_function_supported(config, function))
         .collect::<Vec<_>>();
     let constants = ir.constants.iter().collect::<Vec<_>>();
     let enums = ir.enums.iter().collect::<Vec<_>>();
-    let classes = collect_facade_classes(&config, ir)?;
+    let classes = collect_facade_classes(config, ir)?;
     let callback_usages = collect_callback_usages(&functions, &classes, ir);
     let owned_opaque_value_handles = if global_owned_opaque_value_handles.is_empty()
         && local_owned_opaque_value_handles.is_empty()
@@ -122,7 +122,7 @@ pub(crate) fn render_go_facade_with_owned_opaques(
     Ok(vec![GeneratedGoFile {
         filename: config.go_filename(""),
         contents: render_go_facade_file(
-            &config,
+            config,
             &constants,
             &enums,
             &functions,
@@ -1703,15 +1703,14 @@ fn cast_raw_to_projection_handle(
     returns: &IrType,
     raw_expr: &str,
 ) -> String {
-    if let Some(projection) = config.known_model_projection(&returns.cpp_type) {
-        if let Some(expected_handle) = &returns.handle {
-            if *expected_handle != projection.handle_name {
-                return format!(
-                    "(*C.{})(unsafe.Pointer({}))",
-                    projection.handle_name, raw_expr
-                );
-            }
-        }
+    if let Some(projection) = config.known_model_projection(&returns.cpp_type)
+        && let Some(expected_handle) = &returns.handle
+        && *expected_handle != projection.handle_name
+    {
+        return format!(
+            "(*C.{})unsafe.Pointer({}))",
+            projection.handle_name, raw_expr
+        );
     }
     raw_expr.to_string()
 }
@@ -2012,7 +2011,7 @@ fn go_model_return_type(config: &PipelineContext, ty: &IrType) -> String {
             ty.handle
                 .as_deref()
                 .and_then(|h| h.strip_suffix("Handle"))
-                .map(|base| go_export_name(base))
+                .map(go_export_name)
                 .unwrap_or_else(|| flatten_qualified_cpp_name(&base_model_cpp_type(&ty.cpp_type)))
         })
 }

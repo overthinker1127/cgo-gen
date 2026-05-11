@@ -102,7 +102,7 @@ pub fn run() -> Result<()> {
             let (ctx, parsed) = generator::prepare_with_parsed(&ctx)?;
             let ir = ir::normalize(&ctx, &parsed)?;
             match (output.as_ref(), format) {
-                (Some(path), IrFormat::Yaml) => generator::write_ir(&path, &ir)?,
+                (Some(path), IrFormat::Yaml) => generator::write_ir(path, &ir)?,
                 (Some(path), IrFormat::Json) => {
                     let base_dir = path.parent().unwrap_or_else(|| std::path::Path::new("."));
                     let dump_ir = generator::ir_with_source_headers_relative_to(&ir, base_dir);
@@ -172,7 +172,7 @@ fn format_check_summary(summary: &CheckSummary<'_>) -> String {
         skipped_count
     );
     for (category, count) in skipped_category_counts(summary.skipped_declarations) {
-        let category = skipped_category_for_label(&category);
+        let category = skipped_category_for_label(category);
         output.push_str(&format!(
             "\n- {}: {} skipped; {}",
             category.label, count, category.action

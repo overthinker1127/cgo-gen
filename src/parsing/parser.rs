@@ -163,7 +163,7 @@ impl ParsedApi {
 
 pub fn parse(ctx: &PipelineContext) -> Result<ParsedApi> {
     let mut api = ParsedApi::default();
-    let filter = ParseFilter::from_context(&ctx);
+    let filter = ParseFilter::from_context(ctx);
     let translation_units = compiler::collect_translation_units(&ctx.config)?;
     let mut discovered_headers = BTreeSet::new();
     unsafe {

@@ -57,7 +57,7 @@ impl GenerationSummary {
 }
 
 pub fn generate_all(ctx: &PipelineContext, write_ir: bool) -> Result<GenerationSummary> {
-    let (ctx, parsed) = prepare_with_parsed(&ctx)?;
+    let (ctx, parsed) = prepare_with_parsed(ctx)?;
     let generation_headers = generation_headers(&ctx)?;
 
     if generation_headers.len() > 1 && !ctx.uses_default_output_names() {
@@ -188,7 +188,7 @@ pub fn prepare_config(ctx: &PipelineContext) -> Result<PipelineContext> {
 
 pub fn prepare_with_parsed(ctx: &PipelineContext) -> Result<(PipelineContext, parser::ParsedApi)> {
     let parsed = parser::parse(ctx)?;
-    let ctx = build_pipeline_context(&ctx, &parsed)?;
+    let ctx = build_pipeline_context(ctx, &parsed)?;
     Ok((ctx, parsed))
 }
 
@@ -285,7 +285,7 @@ fn generate_with_opaque_ownership(
     fs::write(
         &header_path,
         trim_trailing_blank_lines(render_header_with_owned_opaque_handles(
-            &ctx,
+            ctx,
             ir,
             native_covered_handles,
             local_owned_opaque_value_handles,
@@ -296,7 +296,7 @@ fn generate_with_opaque_ownership(
     fs::write(
         &source_path,
         trim_trailing_blank_lines(render_source_with_owned_opaque_handles(
-            &ctx,
+            ctx,
             ir,
             native_covered_handles,
             local_owned_opaque_value_handles,
@@ -305,7 +305,7 @@ fn generate_with_opaque_ownership(
     .with_context(|| format!("failed to write source: {}", source_path.display()))?;
     summary.record(source_path);
     for go_file in facade::render_go_facade_with_owned_opaques(
-        &ctx,
+        ctx,
         ir,
         globally_emitted_opaques,
         global_owned_opaque_value_handles,
@@ -322,7 +322,7 @@ fn generate_with_opaque_ownership(
             .with_context(|| format!("failed to write Go wrapper: {}", go_path.display()))?;
         summary.record(go_path);
     }
-    for path in write_go_package_metadata(&ctx)? {
+    for path in write_go_package_metadata(ctx)? {
         summary.record(path);
     }
     if write_ir {
@@ -849,7 +849,7 @@ fn render_source_with_optional_owned_opaque_handles(
         .iter()
         .any(|function| function.returns.kind == IrTypeKind::String)
     {
-        out.push_str(&render_string_free(&ctx));
+        out.push_str(&render_string_free(ctx));
     }
 
     // array_free helpers are defined as static inline in the header

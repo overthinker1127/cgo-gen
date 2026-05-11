@@ -219,49 +219,45 @@ fn expand_env_vars_in_str(value: &str, context: &str) -> Result<String> {
         rest = &rest[dollar..];
 
         // ${VAR} form
-        if let Some(inner) = rest.strip_prefix("${") {
-            if let Some(end) = inner.find('}') {
-                let name = &inner[..end];
-                if valid_env_name(name).is_some() {
-                    match env::var(name) {
-                        Ok(val) => {
-                            result.push_str(&val);
-                            rest = &inner[end + 1..];
-                            continue;
-                        }
-                        Err(env::VarError::NotPresent) => {
-                            bail!(
-                                "environment variable `{name}` referenced in {context} is not set"
-                            )
-                        }
-                        Err(env::VarError::NotUnicode(_)) => bail!(
-                            "environment variable `{name}` referenced in {context} is not valid unicode"
-                        ),
+        if let Some(inner) = rest.strip_prefix("${")
+            && let Some(end) = inner.find('}')
+        {
+            let name = &inner[..end];
+            if valid_env_name(name).is_some() {
+                match env::var(name) {
+                    Ok(val) => {
+                        result.push_str(&val);
+                        rest = &inner[end + 1..];
+                        continue;
                     }
+                    Err(env::VarError::NotPresent) => {
+                        bail!("environment variable `{name}` referenced in {context} is not set")
+                    }
+                    Err(env::VarError::NotUnicode(_)) => bail!(
+                        "environment variable `{name}` referenced in {context} is not valid unicode"
+                    ),
                 }
             }
         }
 
         // $(VAR) form
-        if let Some(inner) = rest.strip_prefix("$(") {
-            if let Some(end) = inner.find(')') {
-                let name = &inner[..end];
-                if valid_env_name(name).is_some() {
-                    match env::var(name) {
-                        Ok(val) => {
-                            result.push_str(&val);
-                            rest = &inner[end + 1..];
-                            continue;
-                        }
-                        Err(env::VarError::NotPresent) => {
-                            bail!(
-                                "environment variable `{name}` referenced in {context} is not set"
-                            )
-                        }
-                        Err(env::VarError::NotUnicode(_)) => bail!(
-                            "environment variable `{name}` referenced in {context} is not valid unicode"
-                        ),
+        if let Some(inner) = rest.strip_prefix("$(")
+            && let Some(end) = inner.find(')')
+        {
+            let name = &inner[..end];
+            if valid_env_name(name).is_some() {
+                match env::var(name) {
+                    Ok(val) => {
+                        result.push_str(&val);
+                        rest = &inner[end + 1..];
+                        continue;
                     }
+                    Err(env::VarError::NotPresent) => {
+                        bail!("environment variable `{name}` referenced in {context} is not set")
+                    }
+                    Err(env::VarError::NotUnicode(_)) => bail!(
+                        "environment variable `{name}` referenced in {context} is not valid unicode"
+                    ),
                 }
             }
         }
