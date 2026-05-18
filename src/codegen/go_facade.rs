@@ -6,6 +6,7 @@ use crate::{
     codegen::ir_norm,
     domain::kind::{FieldAccessKind, IrFunctionKind, IrTypeKind},
     ir::{IrCallback, IrEnum, IrFunction, IrMacroConstant, IrModule, IrType, OpaqueType},
+    parsing::macros::MacroConstantKind,
     pipeline::context::PipelineContext,
 };
 
@@ -479,7 +480,12 @@ fn render_go_constants(constants: &[&IrMacroConstant]) -> String {
     let mut out = String::new();
     out.push_str("const (\n");
     for item in constants {
-        out.push_str(&format!("    {} = {}\n", item.name, item.value));
+        let value = match item.kind {
+            MacroConstantKind::Integer | MacroConstantKind::Float | MacroConstantKind::String => {
+                &item.value
+            }
+        };
+        out.push_str(&format!("    {} = {}\n", item.name, value));
     }
     out.push_str(")\n");
     out
@@ -1685,12 +1691,12 @@ fn render_model_handle_arg(config: &PipelineContext, ty: &IrType, name: &str) ->
     };
     // When the C function's expected handle type differs from the model projection's
     // handle type (e.g., UCIDHandle* vs _UCIDHandle*), cast via unsafe.Pointer.
-    if let Some(expected_handle) = &ty.handle {
-        if *expected_handle != projection.handle_name {
-            return Some(format!(
-                "(*C.{expected_handle})(unsafe.Pointer({handle_arg}))"
-            ));
-        }
+    if let Some(expected_handle) = &ty.handle
+        && *expected_handle != projection.handle_name
+    {
+        return Some(format!(
+            "(*C.{expected_handle})(unsafe.Pointer({handle_arg}))"
+        ));
     }
     Some(handle_arg)
 }

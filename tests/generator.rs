@@ -3,6 +3,7 @@ use cgo_gen::{
     domain::kind::IrTypeKind,
     generator::{self, render_go_structs, render_header, render_source},
     ir, parser,
+    parsing::macros::MacroConstantKind,
     pipeline::context::PipelineContext,
 };
 use std::{env, fs};
@@ -255,7 +256,7 @@ output:
 }
 
 #[test]
-fn renders_standalone_integer_macros_as_go_constants() {
+fn renders_standalone_macros_as_go_constants() {
     let root = std::env::temp_dir().join(format!("c_go_macro_constants_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(root.join("include")).unwrap();
@@ -267,6 +268,14 @@ fn renders_standalone_integer_macros_as_go_constants() {
         #define RTRK_BSRMETHOD_WAITCNT          (20)
         #define TEST_INDEX                      10
         #define STARTUP_PENDING                 0x01
+        #define APP_RATIO                       0.5
+        #define APP_SCALE                       1e-3f
+        #define APP_HEX_FLOAT                   0x1.8p+1
+        #define APP_NAME                        "cgo-gen"
+        #define APP_DISPLAY_NAME                ("cgo-gen demo")
+        #define APP_FULL_NAME                   "cgo" "-gen"
+        #define APP_RAW_NAME                    R"(cgo-gen)"
+        #define APP_UTF8_NAME                   u8"cgo-gen"
         #define MAKE_FLAG(value)                ((value) << 1)
         "#,
     )
@@ -306,13 +315,32 @@ output:
             .iter()
             .any(|item| item.name == "STARTUP_PENDING" && item.value == "0x01")
     );
+    assert!(parsed.macros.iter().any(|item| item.name == "TEST_INDEX"
+        && item.kind == MacroConstantKind::Integer
+        && item.value == "10"));
+    assert!(parsed.macros.iter().any(|item| item.name == "APP_RATIO"
+        && item.kind == MacroConstantKind::Float
+        && item.value == "0.5"));
+    assert!(parsed.macros.iter().any(|item| item.name == "APP_SCALE"
+        && item.kind == MacroConstantKind::Float
+        && item.value == "1e-3"));
+    assert!(parsed.macros.iter().any(|item| item.name == "APP_HEX_FLOAT"
+        && item.kind == MacroConstantKind::Float
+        && item.value == "0x1.8p+1"));
+    assert!(parsed.macros.iter().any(|item| item.name == "APP_NAME"
+        && item.kind == MacroConstantKind::String
+        && item.value == "\"cgo-gen\""));
+    assert!(parsed.macros.iter().any(|item| item.name == "APP_FULL_NAME"
+        && item.kind == MacroConstantKind::String
+        && item.value == "\"cgo\" + \"-gen\""));
+    assert!(!parsed.macros.iter().any(|item| item.name == "MAKE_FLAG"));
+    assert!(!parsed.macros.iter().any(|item| item.name == "APP_RAW_NAME"));
     assert!(
-        parsed
+        !parsed
             .macros
             .iter()
-            .any(|item| item.name == "TEST_INDEX" && item.value == "10")
+            .any(|item| item.name == "APP_UTF8_NAME")
     );
-    assert!(!parsed.macros.iter().any(|item| item.name == "MAKE_FLAG"));
 
     let ir = ir::normalize(&ctx, &parsed).unwrap();
     assert!(
@@ -320,10 +348,18 @@ output:
             .iter()
             .any(|item| item.name == "RTRK_BSRMETHOD_WAITCNT" && item.value == "20")
     );
+    assert!(ir.constants.iter().any(|item| item.name == "TEST_INDEX"
+        && item.kind == MacroConstantKind::Integer
+        && item.value == "10"));
+    assert!(ir.constants.iter().any(|item| item.name == "APP_RATIO"
+        && item.kind == MacroConstantKind::Float
+        && item.value == "0.5"));
     assert!(
         ir.constants
             .iter()
-            .any(|item| item.name == "TEST_INDEX" && item.value == "10")
+            .any(|item| item.name == "APP_DISPLAY_NAME"
+                && item.kind == MacroConstantKind::String
+                && item.value == "\"cgo-gen demo\"")
     );
 
     let go = render_go_structs(&ctx, &ir).unwrap();
@@ -335,8 +371,23 @@ output:
     assert!(go_text.contains("RTRK_BSRMETHOD_WAITCNT = 20"));
     assert!(go_text.contains("TEST_INDEX = 10"));
     assert!(go_text.contains("STARTUP_PENDING = 0x01"));
+    assert!(go_text.contains("APP_RATIO = 0.5"));
+    assert!(go_text.contains("APP_SCALE = 1e-3"));
+    assert!(go_text.contains("APP_HEX_FLOAT = 0x1.8p+1"));
+    assert!(go_text.contains("APP_NAME = \"cgo-gen\""));
+    assert!(go_text.contains("APP_DISPLAY_NAME = \"cgo-gen demo\""));
+    assert!(go_text.contains("APP_FULL_NAME = \"cgo\" + \"-gen\""));
     assert!(!go_text.contains("MAKE_FLAG"));
+    assert!(!go_text.contains("APP_RAW_NAME"));
+    assert!(!go_text.contains("APP_UTF8_NAME"));
     assert!(!go_text.contains("import \"C\""));
+
+    let summary = generator::generate_all(&ctx, true).unwrap();
+    assert_eq!(summary.generated_file_count(), 2);
+    assert!(!root.join("gen/api_wrapper.h").exists());
+    assert!(!root.join("gen/api_wrapper.cpp").exists());
+    assert!(root.join("gen/api_wrapper.go").exists());
+    assert!(root.join("gen/api_wrapper.ir.yaml").exists());
 }
 
 #[test]

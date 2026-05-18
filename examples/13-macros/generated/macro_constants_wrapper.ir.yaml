@@ -1,0 +1,45 @@
+version: 1
+module: cgowrap
+source_headers:
+- ../input/macro_constants.h
+records: []
+opaque_types: []
+functions: []
+enums: []
+constants:
+- name: MacroDisplayName
+  kind: string
+  value: '"cgo-gen macro constants"'
+- name: MacroFeatureMask
+  kind: integer
+  value: '0x0F'
+- name: MacroFullName
+  kind: string
+  value: '"cgo" + "-gen"'
+- name: MacroHexFloat
+  kind: float
+  value: 0x1.8p+1
+- name: MacroMaxRetries
+  kind: integer
+  value: '3'
+- name: MacroPackageName
+  kind: string
+  value: '"cgo-gen"'
+- name: MacroRatio
+  kind: float
+  value: '0.5'
+- name: MacroScale
+  kind: float
+  value: '1e-3'
+- name: MacroTimeoutMs
+  kind: integer
+  value: '2500'
+- name: MacroUnicodeName
+  kind: string
+  value: '"caf\xc3\xa9"'
+callbacks: []
+support:
+  parser_backend: libclang
+  notes:
+  - Parsed with clang AST and normalized into a conservative C ABI IR.
+  - v1 intentionally rejects unsupported C++ constructs during type normalization.

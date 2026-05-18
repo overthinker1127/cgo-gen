@@ -282,28 +282,30 @@ fn generate_with_opaque_ownership(
     let header_path = ctx.output_dir().join(&ctx.output.header);
     let source_path = ctx.output_dir().join(&ctx.output.source);
     let ir_path = ctx.output_dir().join(&ctx.output.ir);
-    fs::write(
-        &header_path,
-        trim_trailing_blank_lines(render_header_with_owned_opaque_handles(
-            ctx,
-            ir,
-            native_covered_handles,
-            local_owned_opaque_value_handles,
-        )),
-    )
-    .with_context(|| format!("failed to write header: {}", header_path.display()))?;
-    summary.record(header_path);
-    fs::write(
-        &source_path,
-        trim_trailing_blank_lines(render_source_with_owned_opaque_handles(
-            ctx,
-            ir,
-            native_covered_handles,
-            local_owned_opaque_value_handles,
-        )),
-    )
-    .with_context(|| format!("failed to write source: {}", source_path.display()))?;
-    summary.record(source_path);
+    if has_native_wrapper_output(ir) {
+        fs::write(
+            &header_path,
+            trim_trailing_blank_lines(render_header_with_owned_opaque_handles(
+                ctx,
+                ir,
+                native_covered_handles,
+                local_owned_opaque_value_handles,
+            )),
+        )
+        .with_context(|| format!("failed to write header: {}", header_path.display()))?;
+        summary.record(header_path);
+        fs::write(
+            &source_path,
+            trim_trailing_blank_lines(render_source_with_owned_opaque_handles(
+                ctx,
+                ir,
+                native_covered_handles,
+                local_owned_opaque_value_handles,
+            )),
+        )
+        .with_context(|| format!("failed to write source: {}", source_path.display()))?;
+        summary.record(source_path);
+    }
     for go_file in facade::render_go_facade_with_owned_opaques(
         ctx,
         ir,
@@ -333,6 +335,10 @@ fn generate_with_opaque_ownership(
         summary.record(ir_path);
     }
     Ok(summary)
+}
+
+fn has_native_wrapper_output(ir: &IrModule) -> bool {
+    !ir.functions.is_empty()
 }
 
 fn trim_trailing_blank_lines(mut contents: String) -> String {

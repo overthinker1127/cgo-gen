@@ -188,4 +188,12 @@ fn checked_in_example_generated_outputs_are_current() {
             "default_arguments_wrapper.ir.yaml",
         ],
     );
+    assert_generated_matches(
+        "examples/13-macros",
+        None,
+        &[
+            "macro_constants_wrapper.go",
+            "macro_constants_wrapper.ir.yaml",
+        ],
+    );
 }

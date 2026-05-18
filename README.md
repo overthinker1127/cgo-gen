@@ -167,6 +167,7 @@ Key behaviors:
 - `input.headers` is an exact file list and cannot be combined with `input.dir`
 - headers included by listed files are parsed as dependencies, but wrappers are generated only for files listed in `input.headers`
 - generated `.go`, `.h`, `.cpp`, and optional `.ir.yaml` files are written together under `output.dir`
+- object-like integer, floating-point, and ordinary string literal macros are emitted as Go constants
 - `output.go_version` controls generated `go.mod` files and defaults to `1.26`
 - when `--go-module <module-path>` is set, `generate` also writes `go.mod` and `build_flags.go`
 

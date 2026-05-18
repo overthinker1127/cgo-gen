@@ -11,6 +11,7 @@ use crate::{
         CppCallbackTypedef, CppConstructor, CppEnum, CppField, CppFunction, CppMacroConstant,
         CppMethod, CppParam, CppRecord, ParsedApi,
     },
+    parsing::macros::MacroConstantKind,
     pipeline::context::PipelineContext,
 };
 
@@ -108,6 +109,7 @@ pub struct IrEnumVariant {
 #[derive(Debug, Clone, Serialize)]
 pub struct IrMacroConstant {
     pub name: String,
+    pub kind: MacroConstantKind,
     pub value: String,
 }
 
@@ -1284,6 +1286,7 @@ fn normalize_enum(item: &CppEnum) -> IrEnum {
 fn normalize_macro_constant(item: &CppMacroConstant) -> IrMacroConstant {
     IrMacroConstant {
         name: item.name.clone(),
+        kind: item.kind,
         value: item.value.clone(),
     }
 }
@@ -1699,42 +1702,43 @@ fn normalize_type_with_canonical(
         return Ok(ty);
     }
     if let Ok(ty) = normalize_type(trimmed, callback_names) {
-        if matches!(
+        if !matches!(
             ty.kind,
             IrTypeKind::ModelReference
                 | IrTypeKind::ModelPointer
                 | IrTypeKind::ModelValue
                 | IrTypeKind::FixedModelArray
-        ) && canonical_trimmed != trimmed
+        ) || canonical_trimmed == trimmed
         {
-            if let Ok(mut canonical_ty) = normalize_type(canonical_trimmed, callback_names) {
-                if matches!(
-                    canonical_ty.kind,
-                    IrTypeKind::ExternStructReference
-                        | IrTypeKind::ExternStructPointer
-                        | IrTypeKind::Primitive
-                        | IrTypeKind::Reference
-                        | IrTypeKind::Pointer
-                        | IrTypeKind::String
-                        | IrTypeKind::CString
-                        | IrTypeKind::FixedByteArray
-                        | IrTypeKind::FixedArray
-                ) {
-                    canonical_ty.cpp_type = trimmed.to_string();
-                    return Ok(canonical_ty);
-                }
-                // When both original and canonical resolve to a Model kind, use the
-                // canonical type name for C++ code generation (e.g. `iKey_t` instead
-                // of `iKey`) while keeping the original handle/c_type for the C API.
-                if matches!(
-                    canonical_ty.kind,
-                    IrTypeKind::ModelValue | IrTypeKind::ModelReference | IrTypeKind::ModelPointer
-                ) {
-                    return Ok(IrType {
-                        cpp_type: canonical_trimmed.to_string(),
-                        ..ty
-                    });
-                }
+            return Ok(ty);
+        }
+        if let Ok(mut canonical_ty) = normalize_type(canonical_trimmed, callback_names) {
+            if matches!(
+                canonical_ty.kind,
+                IrTypeKind::ExternStructReference
+                    | IrTypeKind::ExternStructPointer
+                    | IrTypeKind::Primitive
+                    | IrTypeKind::Reference
+                    | IrTypeKind::Pointer
+                    | IrTypeKind::String
+                    | IrTypeKind::CString
+                    | IrTypeKind::FixedByteArray
+                    | IrTypeKind::FixedArray
+            ) {
+                canonical_ty.cpp_type = trimmed.to_string();
+                return Ok(canonical_ty);
+            }
+            // When both original and canonical resolve to a Model kind, use the
+            // canonical type name for C++ code generation (e.g. `iKey_t` instead
+            // of `iKey`) while keeping the original handle/c_type for the C API.
+            if matches!(
+                canonical_ty.kind,
+                IrTypeKind::ModelValue | IrTypeKind::ModelReference | IrTypeKind::ModelPointer
+            ) {
+                return Ok(IrType {
+                    cpp_type: canonical_trimmed.to_string(),
+                    ..ty
+                });
             }
         }
         return Ok(ty);
