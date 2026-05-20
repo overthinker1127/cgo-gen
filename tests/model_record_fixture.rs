@@ -4,7 +4,7 @@ use std::{
     process::Command,
 };
 
-use cgo_gen::{config::Config, generator, ir, parser, pipeline::context::PipelineContext};
+use cgo_gen::{Config, PipelineContext, generator, ir, parser};
 
 fn temp_output_dir(label: &str) -> PathBuf {
     let mut path = env::temp_dir();
@@ -93,7 +93,7 @@ fn parses_and_generates_wrapper_for_model_record_fixture() {
 
     let header = fs::read_to_string(ctx.output_dir().join(&ctx.output.header)).unwrap();
     let source = fs::read_to_string(ctx.output_dir().join(&ctx.output.source)).unwrap();
-    let go_struct_path = ctx.output_dir().join(ctx.go_filename("DataRecord"));
+    let go_struct_path = ctx.output_dir().join(ctx.go_filename());
     let go_structs = fs::read_to_string(go_struct_path).unwrap();
 
     assert!(header.contains("typedef struct DataRecordHandle DataRecordHandle;"));
@@ -226,7 +226,7 @@ fn unified_go_wrapper_renders_model_record_methods() {
     let ir = ir::normalize(&ctx, &parsed).unwrap();
     generator::generate(&ctx, &ir, true, &Default::default()).unwrap();
 
-    let go_struct_path = ctx.output_dir().join(ctx.go_filename("DataRecord"));
+    let go_struct_path = ctx.output_dir().join(ctx.go_filename());
     let go_wrapper = fs::read_to_string(go_struct_path).unwrap();
 
     assert!(go_wrapper.contains("type DataRecord struct {"));

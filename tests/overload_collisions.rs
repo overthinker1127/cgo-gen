@@ -1,8 +1,7 @@
 use cgo_gen::{
-    config::Config,
+    Config, PipelineContext,
     generator::{render_go_structs, render_header, render_source},
     ir, parser,
-    pipeline::context::PipelineContext,
 };
 
 #[test]

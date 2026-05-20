@@ -479,7 +479,7 @@ impl Config {
         Ok(())
     }
 
-    pub fn go_filename(&self, _value: &str) -> String {
+    pub fn go_filename(&self) -> String {
         let stem = Path::new(&self.output.header)
             .file_stem()
             .and_then(|stem| stem.to_str())

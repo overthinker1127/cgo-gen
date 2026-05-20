@@ -1,11 +1,6 @@
 use std::{env, fs};
 
-use cgo_gen::{
-    config::Config,
-    domain::kind::{IrTypeKind, RecordKind},
-    generator, ir, parser,
-    pipeline::context::PipelineContext,
-};
+use cgo_gen::{Config, IrTypeKind, PipelineContext, RecordKind, generator, ir, parser};
 
 fn temp_output_dir(label: &str) -> std::path::PathBuf {
     let mut path = env::temp_dir();

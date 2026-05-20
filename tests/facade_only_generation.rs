@@ -1,6 +1,6 @@
 use std::{env, fs, path::PathBuf};
 
-use cgo_gen::{config::Config, generator, pipeline::context::PipelineContext};
+use cgo_gen::{Config, PipelineContext, generator};
 
 fn temp_dir(label: &str) -> PathBuf {
     let mut path = env::temp_dir();

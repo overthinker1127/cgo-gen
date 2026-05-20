@@ -150,7 +150,7 @@ pub(crate) fn render_go_facade_with_owned_opaques(
         .collect();
 
     Ok(vec![GeneratedGoFile {
-        filename: config.go_filename(""),
+        filename: config.go_filename(),
         contents: render_go_facade_file(GoFacadeFile {
             config,
             constants: &constants,

@@ -4,7 +4,7 @@ use std::{
     process::Command,
 };
 
-use cgo_gen::{config::Config, generator, ir, parser, pipeline::context::PipelineContext};
+use cgo_gen::{Config, PipelineContext, generator, ir, parser};
 
 fn temp_output_dir(label: &str) -> PathBuf {
     let mut path = env::var_os("CGO_GEN_TEST_TEMP_ROOT")
@@ -329,7 +329,7 @@ output:
     generator::generate(&ctx, &ir, true, &Default::default()).unwrap();
 
     let header = fs::read_to_string(config.output_dir().join(&config.output.header)).unwrap();
-    let go_wrapper = fs::read_to_string(config.output_dir().join(config.go_filename(""))).unwrap();
+    let go_wrapper = fs::read_to_string(config.output_dir().join(config.go_filename())).unwrap();
 
     assert!(!header.contains("char[33]Handle"));
     assert!(!header.contains("char[11]Handle"));

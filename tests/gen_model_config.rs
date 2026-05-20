@@ -4,7 +4,7 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use cgo_gen::{config::Config, generator, ir, parser, pipeline::context::PipelineContext};
+use cgo_gen::{Config, PipelineContext, generator, ir, parser};
 
 static UNIQUE_SUFFIX: AtomicUsize = AtomicUsize::new(0);
 
@@ -94,7 +94,7 @@ fn gen_model_config_generates_go_wrapper_when_sources_exist() {
     let ir = ir::normalize(&scoped, &parsed).unwrap();
     generator::generate(&scoped, &ir, true, &Default::default()).unwrap();
 
-    let go_path = scoped.output_dir().join(scoped.go_filename(""));
+    let go_path = scoped.output_dir().join(scoped.go_filename());
     let header_path = scoped.output_dir().join(&scoped.output.header);
     let source_path = scoped.output_dir().join(&scoped.output.source);
     let ir_path = scoped.output_dir().join(&scoped.output.ir);

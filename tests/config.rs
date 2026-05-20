@@ -4,8 +4,8 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use cgo_gen::config::Config;
-use cgo_gen::{generator, pipeline::context::PipelineContext};
+use cgo_gen::Config;
+use cgo_gen::{PipelineContext, generator};
 #[cfg(unix)]
 use std::os::unix::fs::symlink;
 
@@ -528,7 +528,7 @@ output:
     assert_eq!(config.output.header, "foo_wrapper.h");
     assert_eq!(config.output.source, "foo_wrapper.cpp");
     assert_eq!(config.output.ir, "foo_wrapper.ir.yaml");
-    assert_eq!(config.go_filename("Foo"), "foo_wrapper.go");
+    assert_eq!(config.go_filename(), "foo_wrapper.go");
     assert!(config.output_dir().ends_with("gen"));
 }
 
@@ -596,12 +596,12 @@ fn directory_wrapper_example_scopes_per_header_output_names() {
     assert_eq!(profile.output.header, "user_profile_wrapper.h");
     assert_eq!(profile.output.source, "user_profile_wrapper.cpp");
     assert_eq!(profile.output.ir, "user_profile_wrapper.ir.yaml");
-    assert_eq!(profile.go_filename(""), "user_profile_wrapper.go");
+    assert_eq!(profile.go_filename(), "user_profile_wrapper.go");
 
     assert_eq!(admin.output.header, "admin_user_wrapper.h");
     assert_eq!(admin.output.source, "admin_user_wrapper.cpp");
     assert_eq!(admin.output.ir, "admin_user_wrapper.ir.yaml");
-    assert_eq!(admin.go_filename(""), "admin_user_wrapper.go");
+    assert_eq!(admin.go_filename(), "admin_user_wrapper.go");
 }
 
 #[test]

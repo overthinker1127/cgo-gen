@@ -1,10 +1,7 @@
 use cgo_gen::{
-    config::Config,
-    domain::kind::IrTypeKind,
+    Config, IrTypeKind, MacroConstantKind, PipelineContext,
     generator::{self, render_go_structs, render_header, render_source},
     ir, parser,
-    parsing::macros::MacroConstantKind,
-    pipeline::context::PipelineContext,
 };
 use std::{env, fs};
 

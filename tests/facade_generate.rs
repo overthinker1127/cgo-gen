@@ -1,6 +1,6 @@
 use std::{env, fs};
 
-use cgo_gen::{config::Config, generator, ir, parser, pipeline::context::PipelineContext};
+use cgo_gen::{Config, PipelineContext, generator, ir, parser};
 
 fn temp_output_dir(label: &str) -> std::path::PathBuf {
     let mut path = env::temp_dir();
@@ -20,7 +20,7 @@ fn generates_go_facade_for_simple_free_function_header() {
     let ir = ir::normalize(&ctx, &parsed).unwrap();
     generator::generate(&ctx, &ir, true, &Default::default()).unwrap();
 
-    let go_facade = fs::read_to_string(config.output_dir().join(config.go_filename(""))).unwrap();
+    let go_facade = fs::read_to_string(config.output_dir().join(config.go_filename())).unwrap();
 
     assert!(go_facade.contains("import \"C\""));
     assert!(go_facade.contains(&format!(
@@ -70,7 +70,7 @@ output:
     let ir = ir::normalize(&ctx, &parsed).unwrap();
     generator::generate(&ctx, &ir, true, &Default::default()).unwrap();
 
-    let go_facade = fs::read_to_string(config.output_dir().join(config.go_filename(""))).unwrap();
+    let go_facade = fs::read_to_string(config.output_dir().join(config.go_filename())).unwrap();
 
     assert!(go_facade.contains("import \"errors\""));
     assert!(go_facade.contains("func IsReady() bool {"));

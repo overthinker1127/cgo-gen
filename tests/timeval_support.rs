@@ -1,9 +1,7 @@
 use cgo_gen::{
-    config::Config,
-    domain::kind::IrTypeKind,
+    Config, IrTypeKind, PipelineContext,
     generator::{render_go_structs, render_header, render_source},
     ir, parser,
-    pipeline::context::PipelineContext,
 };
 
 fn write_fixture(name: &str, header: &str) -> std::path::PathBuf {
