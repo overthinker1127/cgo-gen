@@ -192,41 +192,19 @@ unsafe fn parse_translation_units(
 }
 
 fn dedupe_api(api: &mut ParsedApi) {
-    api.functions = api
-        .functions
-        .clone()
+    api.functions = dedupe_vec(std::mem::take(&mut api.functions));
+    api.records = dedupe_vec(std::mem::take(&mut api.records));
+    api.enums = dedupe_vec(std::mem::take(&mut api.enums));
+    api.macros = dedupe_vec(std::mem::take(&mut api.macros));
+    api.callbacks = dedupe_vec(std::mem::take(&mut api.callbacks));
+}
+
+fn dedupe_vec<T: Ord>(items: Vec<T>) -> Vec<T> {
+    items
         .into_iter()
         .collect::<BTreeSet<_>>()
         .into_iter()
-        .collect();
-    api.records = api
-        .records
-        .clone()
-        .into_iter()
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect();
-    api.enums = api
-        .enums
-        .clone()
-        .into_iter()
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect();
-    api.macros = api
-        .macros
-        .clone()
-        .into_iter()
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect();
-    api.callbacks = api
-        .callbacks
-        .clone()
-        .into_iter()
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect();
+        .collect()
 }
 
 #[derive(Debug, Clone)]
