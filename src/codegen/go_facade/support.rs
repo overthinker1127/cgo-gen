@@ -618,3 +618,8 @@ pub(super) fn go_package_name(path: &Path) -> String {
         sanitized
     }
 }
+
+pub(super) fn opaque_delete_symbol(handle_name: &str) -> String {
+    let base = handle_name.strip_suffix("Handle").unwrap_or(handle_name);
+    format!("{}_{}_delete", crate::config::WRAPPER_PREFIX, base)
+}
