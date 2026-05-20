@@ -5,6 +5,11 @@ use serde::Serialize;
 
 pub use crate::domain::kind::{FieldAccessKind, IrFunctionKind, IrTypeKind, RecordKind};
 
+mod naming;
+pub use naming::flatten_cpp_name;
+pub(crate) use naming::overload_suffix;
+use naming::{cpp_qualified, flatten_qualified_cpp_name, symbol_name};
+
 use crate::{
     config::{Config, WRAPPER_PREFIX},
     parser::{
@@ -127,6 +132,15 @@ pub struct SkippedDeclaration {
     pub reason: String,
 }
 
+struct NormalizeEnv<'a> {
+    config: &'a Config,
+    abstract_types: &'a BTreeSet<String>,
+    callback_names: &'a BTreeSet<String>,
+    known_enum_types: &'a BTreeSet<String>,
+    known_records: &'a [IrRecord],
+    skipped_declarations: &'a mut Vec<SkippedDeclaration>,
+}
+
 pub fn normalize(ctx: &PipelineContext, api: &ParsedApi) -> Result<IrModule> {
     let config = &ctx.config;
     let module = WRAPPER_PREFIX.to_string();
@@ -162,50 +176,43 @@ pub fn normalize(ctx: &PipelineContext, api: &ParsedApi) -> Result<IrModule> {
         });
     }
 
-    for record in &api.records {
-        let qualified = cpp_qualified(&record.namespace, &record.name);
-        let handle_name = records
-            .iter()
-            .find(|item| item.cpp_type == qualified)
-            .map(|item| item.handle_name.as_str())
-            .unwrap_or("");
-        functions.extend(normalize_record(
+    {
+        let mut env = NormalizeEnv {
             config,
-            record,
-            handle_name,
-            &abstract_types,
-            &callback_names,
-            &known_enum_types,
-            &records,
-            &mut skipped_declarations,
-        )?);
-    }
+            abstract_types: &abstract_types,
+            callback_names: &callback_names,
+            known_enum_types: &known_enum_types,
+            known_records: &records,
+            skipped_declarations: &mut skipped_declarations,
+        };
 
-    let free_signature_groups = collect_function_signature_groups(&api.functions);
-    let mut emitted_free_signatures = BTreeMap::<String, BTreeSet<Vec<String>>>::new();
-    for function in &api.functions {
-        let group_key = cpp_qualified(&function.namespace, &function.name);
-        let existing_signatures = free_signature_groups
-            .get(&group_key)
-            .cloned()
-            .unwrap_or_default();
-        let emitted_signatures = emitted_free_signatures.entry(group_key).or_default();
-        for params in default_argument_param_variants(
-            &function.params,
-            &existing_signatures,
-            emitted_signatures,
-        ) {
-            if let Some(function) = normalize_function(
-                config,
-                function,
-                params,
-                &abstract_types,
-                &callback_names,
-                &known_enum_types,
-                &records,
-                &mut skipped_declarations,
-            )? {
-                functions.push(function);
+        for record in &api.records {
+            let qualified = cpp_qualified(&record.namespace, &record.name);
+            let handle_name = records
+                .iter()
+                .find(|item| item.cpp_type == qualified)
+                .map(|item| item.handle_name.as_str())
+                .unwrap_or("");
+            functions.extend(normalize_record(&mut env, record, handle_name)?);
+        }
+
+        let free_signature_groups = collect_function_signature_groups(&api.functions);
+        let mut emitted_free_signatures = BTreeMap::<String, BTreeSet<Vec<String>>>::new();
+        for function in &api.functions {
+            let group_key = cpp_qualified(&function.namespace, &function.name);
+            let existing_signatures = free_signature_groups
+                .get(&group_key)
+                .cloned()
+                .unwrap_or_default();
+            let emitted_signatures = emitted_free_signatures.entry(group_key).or_default();
+            for params in default_argument_param_variants(
+                &function.params,
+                &existing_signatures,
+                emitted_signatures,
+            ) {
+                if let Some(function) = normalize_function(&mut env, function, params)? {
+                    functions.push(function);
+                }
             }
         }
     }
@@ -571,27 +578,22 @@ fn cpp_param_signature(params: &[CppParam]) -> Vec<String> {
 }
 
 fn normalize_record(
-    config: &Config,
+    env: &mut NormalizeEnv<'_>,
     record: &CppRecord,
     handle_name: &str,
-    abstract_types: &BTreeSet<String>,
-    callback_names: &BTreeSet<String>,
-    known_enum_types: &BTreeSet<String>,
-    known_records: &[IrRecord],
-    skipped_declarations: &mut Vec<SkippedDeclaration>,
 ) -> Result<Vec<IrFunction>> {
     let mut functions = Vec::new();
     let qualified = cpp_qualified(&record.namespace, &record.name);
 
     if record.is_abstract {
-        skipped_declarations.push(SkippedDeclaration {
+        env.skipped_declarations.push(SkippedDeclaration {
             cpp_name: qualified.clone(),
             reason: "abstract class: has pure virtual methods; constructor wrapper omitted"
                 .to_string(),
         });
     } else if record.constructors.is_empty() {
         functions.push(IrFunction {
-            name: symbol_name(config, &record.namespace, &record.name, "new"),
+            name: symbol_name(env.config, &record.namespace, &record.name, "new"),
             kind: IrFunctionKind::Constructor,
             cpp_name: qualified.clone(),
             method_of: Some(handle_name.to_string()),
@@ -616,16 +618,7 @@ fn normalize_record(
                 &existing_signatures,
                 &mut emitted_signatures,
             ) {
-                if let Some(function) = normalize_constructor(
-                    config,
-                    record,
-                    handle_name,
-                    params,
-                    callback_names,
-                    known_enum_types,
-                    known_records,
-                    skipped_declarations,
-                )? {
+                if let Some(function) = normalize_constructor(env, record, handle_name, params)? {
                     functions.push(function);
                 }
             }
@@ -638,7 +631,7 @@ fn normalize_record(
     }
 
     functions.push(IrFunction {
-        name: symbol_name(config, &record.namespace, &record.name, "delete"),
+        name: symbol_name(env.config, &record.namespace, &record.name, "delete"),
         kind: IrFunctionKind::Destructor,
         cpp_name: if record.has_destructor {
             format!("~{}", qualified)
@@ -675,44 +668,23 @@ fn normalize_record(
             &existing_signatures,
             emitted_signatures,
         ) {
-            if let Some(function) = normalize_method(
-                config,
-                record,
-                handle_name,
-                method,
-                params,
-                abstract_types,
-                callback_names,
-                known_enum_types,
-                known_records,
-                skipped_declarations,
-            )? {
+            if let Some(function) = normalize_method(env, record, handle_name, method, params)? {
                 functions.push(function);
             }
         }
     }
 
     if record.kind == RecordKind::Struct {
-        functions.extend(normalize_struct_fields(
-            config,
-            record,
-            handle_name,
-            callback_names,
-            known_enum_types,
-            known_records,
-        )?);
+        functions.extend(normalize_struct_fields(env, record, handle_name)?);
     }
 
     Ok(functions)
 }
 
 fn normalize_struct_fields(
-    config: &Config,
+    env: &NormalizeEnv<'_>,
     record: &CppRecord,
     handle_name: &str,
-    callback_names: &BTreeSet<String>,
-    known_enum_types: &BTreeSet<String>,
-    known_records: &[IrRecord],
 ) -> Result<Vec<IrFunction>> {
     let qualified = cpp_qualified(&record.namespace, &record.name);
     let existing_methods = record
@@ -734,12 +706,12 @@ fn normalize_struct_fields(
         }
 
         let Ok(field_ty) = normalize_type_with_canonical(
-            config,
+            env.config,
             &field.ty,
             &field.canonical_ty,
-            callback_names,
-            known_enum_types,
-            known_records,
+            env.callback_names,
+            env.known_enum_types,
+            env.known_records,
         ) else {
             continue;
         };
@@ -757,7 +729,7 @@ fn normalize_struct_fields(
         let is_fixed_model_array = field_ty.kind == IrTypeKind::FixedModelArray;
 
         functions.push(make_struct_field_getter(
-            config,
+            env.config,
             &record.namespace,
             &record.name,
             &qualified,
@@ -768,7 +740,7 @@ fn normalize_struct_fields(
 
         if is_fixed_model_array {
             functions.push(make_struct_field_indexed_getter(
-                config,
+                env.config,
                 &record.namespace,
                 &record.name,
                 &qualified,
@@ -785,7 +757,7 @@ fn normalize_struct_fields(
 
         let setter_field_ty = field_ty.clone();
         functions.push(make_struct_field_setter(
-            config,
+            env.config,
             &record.namespace,
             &record.name,
             &qualified,
@@ -796,7 +768,7 @@ fn normalize_struct_fields(
 
         if is_fixed_model_array {
             functions.push(make_struct_field_indexed_setter(
-                config,
+                env.config,
                 &record.namespace,
                 &record.name,
                 &qualified,
@@ -1032,32 +1004,28 @@ fn struct_field_accessor_suffix(field_name: &str) -> String {
 }
 
 fn normalize_constructor(
-    config: &Config,
+    env: &mut NormalizeEnv<'_>,
     record: &CppRecord,
     handle_name: &str,
     cpp_params: &[CppParam],
-    callback_names: &BTreeSet<String>,
-    known_enum_types: &BTreeSet<String>,
-    known_records: &[IrRecord],
-    skipped_declarations: &mut Vec<SkippedDeclaration>,
 ) -> Result<Option<IrFunction>> {
     let qualified = cpp_qualified(&record.namespace, &record.name);
-    if let Some(reason) = function_pointer_reason(None, cpp_params, callback_names) {
-        skipped_declarations.push(SkippedDeclaration {
+    if let Some(reason) = function_pointer_reason(None, cpp_params, env.callback_names) {
+        env.skipped_declarations.push(SkippedDeclaration {
             cpp_name: qualified.clone(),
             reason,
         });
         return Ok(None);
     }
     if let Some(reason) = double_pointer_reason(None, cpp_params) {
-        skipped_declarations.push(SkippedDeclaration {
+        env.skipped_declarations.push(SkippedDeclaration {
             cpp_name: qualified.clone(),
             reason,
         });
         return Ok(None);
     }
     Ok(Some(IrFunction {
-        name: symbol_name(config, &record.namespace, &record.name, "new"),
+        name: symbol_name(env.config, &record.namespace, &record.name, "new"),
         kind: IrFunctionKind::Constructor,
         cpp_name: qualified.clone(),
         method_of: Some(handle_name.to_string()),
@@ -1074,11 +1042,11 @@ fn normalize_constructor(
             .iter()
             .map(|param| {
                 normalize_param(
-                    config,
+                    env.config,
                     param,
-                    callback_names,
-                    known_enum_types,
-                    known_records,
+                    env.callback_names,
+                    env.known_enum_types,
+                    env.known_records,
                 )
             })
             .collect::<Result<Vec<_>>>()?,
@@ -1086,21 +1054,16 @@ fn normalize_constructor(
 }
 
 fn normalize_method(
-    config: &Config,
+    env: &mut NormalizeEnv<'_>,
     record: &CppRecord,
     handle_name: &str,
     method: &CppMethod,
     cpp_params: &[CppParam],
-    abstract_types: &BTreeSet<String>,
-    callback_names: &BTreeSet<String>,
-    known_enum_types: &BTreeSet<String>,
-    known_records: &[IrRecord],
-    skipped_declarations: &mut Vec<SkippedDeclaration>,
 ) -> Result<Option<IrFunction>> {
     let qualified = cpp_qualified(&record.namespace, &record.name);
     let cpp_name = format!("{}::{}", qualified, method.name);
     if is_operator_name(&method.name) {
-        skipped_declarations.push(SkippedDeclaration {
+        env.skipped_declarations.push(SkippedDeclaration {
             cpp_name,
             reason: "operator declarations are unsupported in v1".to_string(),
         });
@@ -1113,26 +1076,29 @@ fn normalize_method(
             method.return_is_function_pointer,
         )),
         cpp_params,
-        callback_names,
+        env.callback_names,
     ) {
-        skipped_declarations.push(SkippedDeclaration { cpp_name, reason });
+        env.skipped_declarations
+            .push(SkippedDeclaration { cpp_name, reason });
         return Ok(None);
     }
     if let Some(reason) = double_pointer_reason(
         Some((&method.return_type, &method.return_canonical_type)),
         cpp_params,
     ) {
-        skipped_declarations.push(SkippedDeclaration { cpp_name, reason });
+        env.skipped_declarations
+            .push(SkippedDeclaration { cpp_name, reason });
         return Ok(None);
     }
     if let Some(reason) = raw_unsafe_by_value_reason(
         Some((&method.return_type, &method.return_canonical_type)),
         cpp_params,
-        callback_names,
-        known_enum_types,
-        known_records,
+        env.callback_names,
+        env.known_enum_types,
+        env.known_records,
     ) {
-        skipped_declarations.push(SkippedDeclaration { cpp_name, reason });
+        env.skipped_declarations
+            .push(SkippedDeclaration { cpp_name, reason });
         return Ok(None);
     }
     let mut params = Vec::new();
@@ -1158,17 +1124,17 @@ fn normalize_method(
             .iter()
             .map(|param| {
                 normalize_param(
-                    config,
+                    env.config,
                     param,
-                    callback_names,
-                    known_enum_types,
-                    known_records,
+                    env.callback_names,
+                    env.known_enum_types,
+                    env.known_records,
                 )
             })
             .collect::<Result<Vec<_>>>()?,
     );
     Ok(Some(IrFunction {
-        name: symbol_name(config, &record.namespace, &record.name, &method.name),
+        name: symbol_name(env.config, &record.namespace, &record.name, &method.name),
         kind: IrFunctionKind::Method,
         cpp_name,
         method_of: Some(handle_name.to_string()),
@@ -1176,31 +1142,26 @@ fn normalize_method(
         is_const: Some(method.is_const),
         field_accessor: None,
         returns: normalize_return_type_with_canonical(
-            config,
+            env.config,
             &method.return_type,
             &method.return_canonical_type,
-            abstract_types,
-            callback_names,
-            known_enum_types,
-            known_records,
+            env.abstract_types,
+            env.callback_names,
+            env.known_enum_types,
+            env.known_records,
         )?,
         params,
     }))
 }
 
 fn normalize_function(
-    config: &Config,
+    env: &mut NormalizeEnv<'_>,
     function: &CppFunction,
     cpp_params: &[CppParam],
-    abstract_types: &BTreeSet<String>,
-    callback_names: &BTreeSet<String>,
-    known_enum_types: &BTreeSet<String>,
-    known_records: &[IrRecord],
-    skipped_declarations: &mut Vec<SkippedDeclaration>,
 ) -> Result<Option<IrFunction>> {
     let cpp_name = cpp_qualified(&function.namespace, &function.name);
     if is_operator_name(&function.name) {
-        skipped_declarations.push(SkippedDeclaration {
+        env.skipped_declarations.push(SkippedDeclaration {
             cpp_name,
             reason: "operator declarations are unsupported in v1".to_string(),
         });
@@ -1213,30 +1174,33 @@ fn normalize_function(
             function.return_is_function_pointer,
         )),
         cpp_params,
-        callback_names,
+        env.callback_names,
     ) {
-        skipped_declarations.push(SkippedDeclaration { cpp_name, reason });
+        env.skipped_declarations
+            .push(SkippedDeclaration { cpp_name, reason });
         return Ok(None);
     }
     if let Some(reason) = double_pointer_reason(
         Some((&function.return_type, &function.return_canonical_type)),
         cpp_params,
     ) {
-        skipped_declarations.push(SkippedDeclaration { cpp_name, reason });
+        env.skipped_declarations
+            .push(SkippedDeclaration { cpp_name, reason });
         return Ok(None);
     }
     if let Some(reason) = raw_unsafe_by_value_reason(
         Some((&function.return_type, &function.return_canonical_type)),
         cpp_params,
-        callback_names,
-        known_enum_types,
-        known_records,
+        env.callback_names,
+        env.known_enum_types,
+        env.known_records,
     ) {
-        skipped_declarations.push(SkippedDeclaration { cpp_name, reason });
+        env.skipped_declarations
+            .push(SkippedDeclaration { cpp_name, reason });
         return Ok(None);
     }
     Ok(Some(IrFunction {
-        name: symbol_name(config, &function.namespace, "", &function.name),
+        name: symbol_name(env.config, &function.namespace, "", &function.name),
         kind: IrFunctionKind::Function,
         cpp_name,
         method_of: None,
@@ -1244,23 +1208,23 @@ fn normalize_function(
         is_const: None,
         field_accessor: None,
         returns: normalize_return_type_with_canonical(
-            config,
+            env.config,
             &function.return_type,
             &function.return_canonical_type,
-            abstract_types,
-            callback_names,
-            known_enum_types,
-            known_records,
+            env.abstract_types,
+            env.callback_names,
+            env.known_enum_types,
+            env.known_records,
         )?,
         params: cpp_params
             .iter()
             .map(|param| {
                 normalize_param(
-                    config,
+                    env.config,
                     param,
-                    callback_names,
-                    known_enum_types,
-                    known_records,
+                    env.callback_names,
+                    env.known_enum_types,
+                    env.known_records,
                 )
             })
             .collect::<Result<Vec<_>>>()?,
@@ -2143,168 +2107,6 @@ fn is_supported_primitive(name: &str) -> bool {
     )
 }
 
-fn symbol_name(_config: &Config, namespace: &[String], owner: &str, tail: &str) -> String {
-    let mut parts = vec![WRAPPER_PREFIX.to_string()];
-    parts.extend(namespace.iter().map(|item| format_symbol_part(item)));
-    if !owner.is_empty() {
-        parts.push(format_symbol_part(owner));
-    }
-    parts.push(format_symbol_part(tail));
-    parts.join("_")
-}
-
-pub(crate) fn overload_suffix(function: &IrFunction) -> String {
-    let params = if function.method_of.is_some()
-        && matches!(
-            function.kind,
-            IrFunctionKind::Method | IrFunctionKind::Destructor
-        ) {
-        &function.params[1..]
-    } else {
-        &function.params[..]
-    };
-
-    let mut parts = if params.is_empty() {
-        vec!["void".to_string()]
-    } else {
-        params
-            .iter()
-            .map(|param| type_signature_token(&param.ty))
-            .collect::<Vec<_>>()
-    };
-
-    if function.kind == IrFunctionKind::Method {
-        parts.push(
-            if function.is_const == Some(true) {
-                "const"
-            } else {
-                "mut"
-            }
-            .to_string(),
-        );
-    }
-
-    parts.join("_")
-}
-
-fn type_signature_token(ty: &IrType) -> String {
-    match ty.kind {
-        IrTypeKind::Primitive | IrTypeKind::Void => sanitize_symbol_token(&ty.cpp_type),
-        IrTypeKind::Enum => format!(
-            "enum_{}",
-            sanitize_symbol_token(&enum_base_cpp_type(&ty.cpp_type))
-        ),
-        IrTypeKind::CString => {
-            if ty.cpp_type.contains("const")
-                || matches!(ty.cpp_type.as_str(), "NPCSTR" | "NPSTRC" | "NPCSTRC")
-            {
-                "c_str".to_string()
-            } else {
-                "mut_c_str".to_string()
-            }
-        }
-        IrTypeKind::FixedByteArray => {
-            let n = byte_array_length(&ty.cpp_type).unwrap_or(0);
-            format!("byte_array_{n}")
-        }
-        IrTypeKind::String => "string".to_string(),
-        IrTypeKind::Pointer => format!(
-            "ptr_{}",
-            sanitize_symbol_token(ty.cpp_type.trim_end_matches('*'))
-        ),
-        IrTypeKind::Reference => format!(
-            "ref_{}",
-            sanitize_symbol_token(ty.cpp_type.trim_end_matches('&'))
-        ),
-        IrTypeKind::ExternStructPointer => format!(
-            "extern_ptr_{}",
-            sanitize_symbol_token(&base_model_cpp_type(&ty.c_type))
-        ),
-        IrTypeKind::ExternStructReference => format!(
-            "extern_ref_{}",
-            sanitize_symbol_token(&base_model_cpp_type(&ty.c_type))
-        ),
-        IrTypeKind::Opaque => format!(
-            "opaque_{}",
-            sanitize_symbol_token(&base_model_cpp_type(&ty.cpp_type))
-        ),
-        IrTypeKind::ModelReference => format!(
-            "model_ref_{}",
-            sanitize_symbol_token(&base_model_cpp_type(&ty.cpp_type))
-        ),
-        IrTypeKind::ModelPointer => format!(
-            "model_ptr_{}",
-            sanitize_symbol_token(&base_model_cpp_type(&ty.cpp_type))
-        ),
-        IrTypeKind::ModelValue => format!(
-            "model_value_{}",
-            sanitize_symbol_token(&base_model_cpp_type(&ty.cpp_type))
-        ),
-        IrTypeKind::Callback => format!("callback_{}", sanitize_symbol_token(&ty.cpp_type)),
-        IrTypeKind::FixedArray => {
-            let n = fixed_array_length(&ty.cpp_type).unwrap_or(0);
-            let elem = fixed_array_elem_type(&ty.cpp_type).unwrap_or("unknown");
-            format!("array_{n}_{}", sanitize_symbol_token(elem))
-        }
-        IrTypeKind::FixedModelArray => {
-            let n = fixed_array_length(&ty.cpp_type).unwrap_or(0);
-            let handle = ty.handle.as_deref().unwrap_or("unknown");
-            format!("model_array_{n}_{}", sanitize_symbol_token(handle))
-        }
-    }
-}
-
-fn sanitize_symbol_token(value: &str) -> String {
-    let mut out = String::new();
-    let mut last_was_underscore = false;
-
-    for ch in value.chars() {
-        let normalized = if ch.is_ascii_alphanumeric() {
-            Some(ch.to_ascii_lowercase())
-        } else {
-            None
-        };
-
-        match normalized {
-            Some(ch) => {
-                out.push(ch);
-                last_was_underscore = false;
-            }
-            None if !last_was_underscore => {
-                out.push('_');
-                last_was_underscore = true;
-            }
-            None => {}
-        }
-    }
-
-    out.trim_matches('_').to_string()
-}
-
-fn format_symbol_part(value: &str) -> String {
-    value.to_string()
-}
-
-fn cpp_qualified(namespace: &[String], leaf: &str) -> String {
-    if namespace.is_empty() {
-        leaf.to_string()
-    } else {
-        format!("{}::{}", namespace.join("::"), leaf)
-    }
-}
-
-pub fn flatten_cpp_name(namespace: &[String], leaf: &str) -> String {
-    if namespace.is_empty() {
-        leaf.to_string()
-    } else {
-        format!("{}{}", namespace.join(""), leaf)
-    }
-}
-
-fn flatten_qualified_cpp_name(value: &str) -> String {
-    value.split("::").collect::<Vec<_>>().join("")
-}
-
 fn base_model_cpp_type(value: &str) -> String {
     value
         .trim()
@@ -2418,7 +2220,7 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
-    use crate::parser::{CppFunction, CppParam, ParsedApi};
+    use crate::parser::{CppFunction, CppMethod, CppParam, CppRecord, ParsedApi};
 
     #[test]
     fn normalizes_struct_timeval_pointer_and_reference_as_external_structs() {
@@ -2722,6 +2524,105 @@ mod tests {
         assert!(serialized_ty.contains("kind: model_value"));
         assert!(serialized_function.contains("kind: constructor"));
         assert_eq!(serialized_record_kind.trim(), "struct");
+    }
+
+    #[test]
+    fn naming_helpers_keep_existing_symbol_shapes() {
+        let namespace = vec!["foo".to_string(), "bar".to_string()];
+
+        assert_eq!(
+            symbol_name(&Config::default(), &namespace, "Widget", "set_value"),
+            "cgowrap_foo_bar_Widget_set_value"
+        );
+        assert_eq!(flatten_cpp_name(&namespace, "Widget"), "foobarWidget");
+        assert_eq!(
+            flatten_qualified_cpp_name("foo::bar::Widget"),
+            "foobarWidget"
+        );
+        assert_eq!(
+            naming::sanitize_symbol_token("const Foo::Bar*&"),
+            "const_foo_bar"
+        );
+    }
+
+    #[test]
+    fn overload_suffix_keeps_method_receiver_out_of_signature() {
+        let function = IrFunction {
+            name: "cgowrap_Widget_set__int_mut".to_string(),
+            kind: IrFunctionKind::Method,
+            cpp_name: "Widget::set".to_string(),
+            method_of: Some("WidgetHandle".to_string()),
+            owner_cpp_type: Some("Widget".to_string()),
+            is_const: Some(false),
+            field_accessor: None,
+            returns: primitive_type("void"),
+            params: vec![
+                IrParam {
+                    name: "self".to_string(),
+                    ty: IrType {
+                        kind: IrTypeKind::Opaque,
+                        cpp_type: "Widget*".to_string(),
+                        c_type: "WidgetHandle*".to_string(),
+                        handle: Some("WidgetHandle".to_string()),
+                    },
+                },
+                IrParam {
+                    name: "value".to_string(),
+                    ty: primitive_type("int"),
+                },
+            ],
+        };
+
+        assert_eq!(overload_suffix(&function), "int_mut");
+    }
+
+    #[test]
+    fn normalize_env_preserves_skipped_declaration_reporting() {
+        let api = ParsedApi {
+            headers: vec!["Widget.hpp".to_string()],
+            functions: vec![],
+            records: vec![CppRecord {
+                source_header: PathBuf::from("Widget.hpp"),
+                namespace: vec![],
+                name: "Widget".to_string(),
+                kind: RecordKind::Class,
+                fields: vec![],
+                methods: vec![CppMethod {
+                    name: "operator+".to_string(),
+                    return_type: "int".to_string(),
+                    return_canonical_type: "int".to_string(),
+                    return_is_function_pointer: false,
+                    params: vec![CppParam {
+                        name: "value".to_string(),
+                        ty: "int".to_string(),
+                        canonical_ty: "int".to_string(),
+                        is_function_pointer: false,
+                        callback_typedef: None,
+                        has_default: false,
+                    }],
+                    is_const: true,
+                }],
+                constructors: vec![],
+                has_destructor: false,
+                has_declared_constructor: false,
+                is_abstract: false,
+            }],
+            enums: vec![],
+            macros: vec![],
+            callbacks: vec![],
+        };
+
+        let ir = normalize(&PipelineContext::new(Config::default()), &api).unwrap();
+
+        assert_eq!(ir.support.skipped_declarations.len(), 1);
+        assert_eq!(
+            ir.support.skipped_declarations[0].cpp_name,
+            "Widget::operator+"
+        );
+        assert_eq!(
+            ir.support.skipped_declarations[0].reason,
+            "operator declarations are unsupported in v1"
+        );
     }
 
     #[test]
