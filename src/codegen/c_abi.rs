@@ -310,6 +310,7 @@ fn generate_with_opaque_ownership(
         ctx,
         ir,
         globally_emitted_opaques,
+        native_covered_handles,
         global_owned_opaque_value_handles,
         local_owned_opaque_value_handles,
     )? {

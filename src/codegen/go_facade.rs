@@ -83,6 +83,7 @@ struct GoFacadeFile<'a, 'ir> {
     callback_usages: &'a [CallbackUsage<'ir>],
     opaque_types: &'a [&'ir OpaqueType],
     globally_emitted_opaques: &'a BTreeSet<String>,
+    global_rooted_handles: &'a BTreeSet<String>,
     owned_opaque_value_handles: &'a BTreeSet<String>,
     local_owned_opaque_value_handles: &'a BTreeSet<String>,
 }
@@ -98,6 +99,7 @@ pub fn render_go_facade(
         globally_emitted_opaques,
         &BTreeSet::new(),
         &BTreeSet::new(),
+        &BTreeSet::new(),
     )
 }
 
@@ -105,6 +107,7 @@ pub(crate) fn render_go_facade_with_owned_opaques(
     config: &PipelineContext,
     ir: &IrModule,
     globally_emitted_opaques: &BTreeSet<String>,
+    global_rooted_handles: &BTreeSet<String>,
     global_owned_opaque_value_handles: &BTreeSet<String>,
     local_owned_opaque_value_handles: &BTreeSet<String>,
 ) -> Result<Vec<GeneratedGoFile>> {
@@ -161,6 +164,7 @@ pub(crate) fn render_go_facade_with_owned_opaques(
             callback_usages: &callback_usages,
             opaque_types: &local_opaque_types,
             globally_emitted_opaques,
+            global_rooted_handles,
             owned_opaque_value_handles: &owned_opaque_value_handles,
             local_owned_opaque_value_handles: &local_owned_opaque_value_handles,
         }),
@@ -177,6 +181,7 @@ fn render_go_facade_file(input: GoFacadeFile<'_, '_>) -> String {
         callback_usages,
         opaque_types,
         globally_emitted_opaques,
+        global_rooted_handles,
         owned_opaque_value_handles,
         local_owned_opaque_value_handles,
     } = input;
@@ -309,6 +314,9 @@ fn render_go_facade_file(input: GoFacadeFile<'_, '_>) -> String {
             .iter()
             .map(|projection| projection.handle_name.clone()),
     );
+    let mut rooted_handles = covered_handles.clone();
+    rooted_handles.extend(global_rooted_handles.iter().cloned());
+    rooted_handles.extend(owned_opaque_value_handles.iter().cloned());
 
     let covered_free_function_names = covered_dispatcher_function_names(&free_function_dispatchers);
     for function in functions {
@@ -318,7 +326,7 @@ fn render_go_facade_file(input: GoFacadeFile<'_, '_>) -> String {
         out.push_str(&render_free_function(
             config,
             function,
-            &covered_handles,
+            &rooted_handles,
             owned_opaque_value_handles,
         ));
         out.push('\n');
@@ -327,7 +335,7 @@ fn render_go_facade_file(input: GoFacadeFile<'_, '_>) -> String {
         out.push_str(&render_free_function_dispatcher(
             config,
             dispatcher,
-            &covered_handles,
+            &rooted_handles,
             owned_opaque_value_handles,
         ));
         out.push('\n');
@@ -380,6 +388,8 @@ fn render_go_facade_file(input: GoFacadeFile<'_, '_>) -> String {
                 class,
                 constructor,
                 constructor_name,
+                &rooted_handles,
+                owned_opaque_value_handles,
             ));
             out.push('\n');
         }
@@ -395,7 +405,7 @@ fn render_go_facade_file(input: GoFacadeFile<'_, '_>) -> String {
                 config,
                 class,
                 method,
-                &covered_handles,
+                &rooted_handles,
                 owned_opaque_value_handles,
             ));
             out.push('\n');
@@ -405,7 +415,7 @@ fn render_go_facade_file(input: GoFacadeFile<'_, '_>) -> String {
                 config,
                 class,
                 dispatcher,
-                &covered_handles,
+                &rooted_handles,
                 owned_opaque_value_handles,
             ));
             out.push('\n');
@@ -899,6 +909,46 @@ mod tests {
         assert!(code.contains("panic(\"ThingModel handle is closed\")"));
         assert!(code.contains("cHandles0[_i] = _v.ptr"));
         assert!(code.contains("C.cgowrap_Api_SetThings(cArg0)"));
+    }
+
+    #[test]
+    fn fixed_model_array_params_without_owned_wrapper_do_not_check_root() {
+        let config = test_context_with_known_model();
+        let function = IrFunction {
+            name: "cgowrap_Api_SetRecords".to_string(),
+            kind: IrFunctionKind::Function,
+            cpp_name: "SetRecords".to_string(),
+            method_of: None,
+            owner_cpp_type: None,
+            is_const: None,
+            field_accessor: None,
+            operator: None,
+            returns: IrType {
+                kind: IrTypeKind::Void,
+                cpp_type: "void".to_string(),
+                c_type: "void".to_string(),
+                handle: None,
+            },
+            params: vec![IrParam {
+                name: "records".to_string(),
+                ty: IrType {
+                    kind: IrTypeKind::FixedModelArray,
+                    cpp_type: "iRecSet[2]".to_string(),
+                    c_type: "iRecSetHandle**".to_string(),
+                    handle: Some("iRecSetHandle".to_string()),
+                },
+            }],
+        };
+
+        let code = render_free_function(&config, &function, &BTreeSet::new(), &BTreeSet::new());
+        assert!(code.contains("if len(records) != 2 {"));
+        assert!(code.contains("for _i, _v := range records {"));
+        assert!(code.contains("if _v == nil || _v.ptr == nil {"));
+        assert!(code.contains("cHandles0[_i] = _v.ptr"));
+        assert!(
+            !code.contains("_v.root"),
+            "non-owned opaque fixed model array params have no root field:\n{code}"
+        );
     }
 
     #[test]
@@ -2170,6 +2220,123 @@ mod tests {
         assert!(
             contents.contains("return newOwnedCIosShm(raw)"),
             "expected owned opaque CIosShm wrap pattern but got:\n{contents}"
+        );
+    }
+
+    #[test]
+    fn opaque_model_value_param_without_owned_wrapper_does_not_check_root() {
+        use crate::codegen::ir_norm::{IrModule, OpaqueType, SupportMetadata};
+
+        let self_param = IrParam {
+            name: "self".to_string(),
+            ty: IrType {
+                kind: IrTypeKind::Opaque,
+                cpp_type: "Api*".to_string(),
+                c_type: "ApiHandle*".to_string(),
+                handle: Some("ApiHandle".to_string()),
+            },
+        };
+        let record_param = IrParam {
+            name: "record".to_string(),
+            ty: IrType {
+                kind: IrTypeKind::ModelValue,
+                cpp_type: "iRecSet".to_string(),
+                c_type: "iRecSetHandle*".to_string(),
+                handle: Some("iRecSetHandle".to_string()),
+            },
+        };
+        let ir = IrModule {
+            version: 1,
+            module: "cgowrap".to_string(),
+            source_headers: vec![],
+            records: vec![],
+            opaque_types: vec![
+                OpaqueType {
+                    name: "ApiHandle".to_string(),
+                    cpp_type: "Api".to_string(),
+                },
+                OpaqueType {
+                    name: "iRecSetHandle".to_string(),
+                    cpp_type: "iRecSet".to_string(),
+                },
+            ],
+            functions: vec![
+                IrFunction {
+                    name: "cgowrap_Api_new".to_string(),
+                    kind: IrFunctionKind::Constructor,
+                    cpp_name: "Api".to_string(),
+                    method_of: Some("ApiHandle".to_string()),
+                    owner_cpp_type: Some("Api".to_string()),
+                    is_const: None,
+                    field_accessor: None,
+                    operator: None,
+                    returns: IrType {
+                        kind: IrTypeKind::Opaque,
+                        cpp_type: "Api*".to_string(),
+                        c_type: "ApiHandle*".to_string(),
+                        handle: Some("ApiHandle".to_string()),
+                    },
+                    params: vec![],
+                },
+                IrFunction {
+                    name: "cgowrap_Api_delete".to_string(),
+                    kind: IrFunctionKind::Destructor,
+                    cpp_name: "~Api".to_string(),
+                    method_of: Some("ApiHandle".to_string()),
+                    owner_cpp_type: Some("Api".to_string()),
+                    is_const: None,
+                    field_accessor: None,
+                    operator: None,
+                    returns: IrType {
+                        kind: IrTypeKind::Void,
+                        cpp_type: "void".to_string(),
+                        c_type: "void".to_string(),
+                        handle: None,
+                    },
+                    params: vec![self_param.clone()],
+                },
+                IrFunction {
+                    name: "cgowrap_Api_SaveRecord".to_string(),
+                    kind: IrFunctionKind::Method,
+                    cpp_name: "Api::SaveRecord".to_string(),
+                    method_of: Some("ApiHandle".to_string()),
+                    owner_cpp_type: Some("Api".to_string()),
+                    is_const: Some(false),
+                    field_accessor: None,
+                    operator: None,
+                    returns: IrType {
+                        kind: IrTypeKind::Void,
+                        cpp_type: "void".to_string(),
+                        c_type: "void".to_string(),
+                        handle: None,
+                    },
+                    params: vec![self_param, record_param],
+                },
+            ],
+            enums: vec![],
+            constants: vec![],
+            callbacks: vec![],
+            support: SupportMetadata {
+                parser_backend: "test".to_string(),
+                notes: vec![],
+                skipped_declarations: vec![],
+            },
+        };
+
+        let files = render_go_facade(
+            &PipelineContext::new(Config::default()),
+            &ir,
+            &BTreeSet::new(),
+        )
+        .unwrap();
+        let contents = &files[0].contents;
+        assert!(contents.contains("type IRecSet struct {\n    ptr *C.iRecSetHandle\n}"));
+        assert!(contents.contains("func (a *Api) SaveRecord(record *IRecSet) {"));
+        assert!(contents.contains("if record == nil || record.ptr == nil {"));
+        assert!(contents.contains("cArg0 = record.ptr"));
+        assert!(
+            !contents.contains("record.root"),
+            "non-owned opaque model params have no root field:\n{contents}"
         );
     }
 

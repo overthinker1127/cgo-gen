@@ -41,10 +41,20 @@ pub(super) fn render_free_function(
     }
     let params_list = function.params.iter().collect::<Vec<_>>();
     let params = render_param_list(config, &params_list);
-    let prep = render_call_prep(config, &params_list);
+    let prep = render_call_prep(
+        config,
+        &params_list,
+        covered_handles,
+        owned_opaque_value_handles,
+    );
     let call = format!("C.{}({})", function.name, prep.args.join(", "));
     let go_name = go_facade_export_name(function);
-    let borrow_root = infer_borrow_root_expr(&params_list);
+    let borrow_root = infer_borrow_root_expr(
+        config,
+        &params_list,
+        covered_handles,
+        owned_opaque_value_handles,
+    );
 
     let sig = go_return_sig(config, &function.returns);
     let sig_part = if sig.is_empty() {
@@ -386,9 +396,21 @@ fn render_dispatcher_inline_return(
     let has_callback = has_callback_param(param_refs.iter().copied());
     let prep = if has_callback {
         let param_offset = if receiver.is_some() { 1 } else { 0 };
-        render_callback_call_prep(config, function, &param_refs, param_offset)
+        render_callback_call_prep(
+            config,
+            function,
+            &param_refs,
+            param_offset,
+            covered_handles,
+            owned_opaque_value_handles,
+        )
     } else {
-        render_call_prep(config, &param_refs)
+        render_call_prep(
+            config,
+            &param_refs,
+            covered_handles,
+            owned_opaque_value_handles,
+        )
     };
     let call_name = if has_callback {
         format!("C.{}_bridge", function.name)
@@ -405,7 +427,14 @@ fn render_dispatcher_inline_return(
     let call = format!("{call_name}({})", call_args.join(", "));
     let borrow_root = receiver
         .map(|(receiver_name, _)| format!("{receiver_name}.root"))
-        .or_else(|| infer_borrow_root_expr(&param_refs));
+        .or_else(|| {
+            infer_borrow_root_expr(
+                config,
+                &param_refs,
+                covered_handles,
+                owned_opaque_value_handles,
+            )
+        });
 
     let mut out = String::new();
     out.push_str(&indented_lines(&prep.setup_lines));
@@ -444,7 +473,14 @@ pub(super) fn render_callback_method(
     let receiver = receiver_name(&class.go_name);
     let method_params = function.params.iter().skip(1).collect::<Vec<_>>();
     let params = render_param_list(config, &method_params);
-    let prep = render_callback_call_prep(config, function, &method_params, 1);
+    let prep = render_callback_call_prep(
+        config,
+        function,
+        &method_params,
+        1,
+        covered_handles,
+        owned_opaque_value_handles,
+    );
     let call = format!(
         "C.{}_bridge({})",
         function.name,
@@ -497,10 +533,22 @@ fn render_callback_free_function(
 ) -> String {
     let params_list = function.params.iter().collect::<Vec<_>>();
     let params = render_param_list(config, &params_list);
-    let prep = render_callback_call_prep(config, function, &params_list, 0);
+    let prep = render_callback_call_prep(
+        config,
+        function,
+        &params_list,
+        0,
+        covered_handles,
+        owned_opaque_value_handles,
+    );
     let call = format!("C.{}_bridge({})", function.name, prep.args.join(", "));
     let go_name = go_facade_export_name(function);
-    let borrow_root = infer_borrow_root_expr(&params_list);
+    let borrow_root = infer_borrow_root_expr(
+        config,
+        &params_list,
+        covered_handles,
+        owned_opaque_value_handles,
+    );
 
     let sig = go_return_sig(config, &function.returns);
     let sig_part = if sig.is_empty() {
@@ -529,6 +577,8 @@ fn render_callback_call_prep(
     function: &IrFunction,
     params: &[&ir_norm::IrParam],
     param_offset: usize,
+    covered_handles: &BTreeSet<String>,
+    owned_opaque_value_handles: &BTreeSet<String>,
 ) -> RenderedCallPrep {
     let mut prep = RenderedCallPrep::default();
 
@@ -574,7 +624,15 @@ fn render_callback_call_prep(
                 prep.args.push(c_name);
             }
             IrTypeKind::FixedModelArray => {
-                render_fixed_model_array_arg(config, &mut prep, &param.ty, &param.name, index);
+                render_fixed_model_array_arg(
+                    config,
+                    &mut prep,
+                    &param.ty,
+                    &param.name,
+                    index,
+                    covered_handles,
+                    owned_opaque_value_handles,
+                );
             }
             IrTypeKind::Reference => render_reference_arg(&mut prep, &param.ty, &param.name, index),
             IrTypeKind::Pointer => render_pointer_arg(&mut prep, &param.ty, &param.name, index),
@@ -585,7 +643,15 @@ fn render_callback_call_prep(
                 render_extern_struct_arg(&mut prep, &param.ty, &param.name, index, false)
             }
             IrTypeKind::ModelReference | IrTypeKind::ModelPointer | IrTypeKind::ModelValue => {
-                render_model_arg(config, &mut prep, &param.ty, &param.name, index)
+                render_model_arg(
+                    config,
+                    &mut prep,
+                    &param.ty,
+                    &param.name,
+                    index,
+                    covered_handles,
+                    owned_opaque_value_handles,
+                )
             }
             _ => prep.args.push(render_c_arg(&param.ty, &param.name)),
         }
@@ -611,6 +677,8 @@ pub(super) fn render_param_list(config: &PipelineContext, params: &[&ir_norm::Ir
 pub(super) fn render_call_prep(
     config: &PipelineContext,
     params: &[&ir_norm::IrParam],
+    covered_handles: &BTreeSet<String>,
+    owned_opaque_value_handles: &BTreeSet<String>,
 ) -> RenderedCallPrep {
     let mut prep = RenderedCallPrep::default();
 
@@ -646,7 +714,15 @@ pub(super) fn render_call_prep(
                 prep.args.push(c_name);
             }
             IrTypeKind::FixedModelArray => {
-                render_fixed_model_array_arg(config, &mut prep, &param.ty, &param.name, index);
+                render_fixed_model_array_arg(
+                    config,
+                    &mut prep,
+                    &param.ty,
+                    &param.name,
+                    index,
+                    covered_handles,
+                    owned_opaque_value_handles,
+                );
             }
             IrTypeKind::Reference => render_reference_arg(&mut prep, &param.ty, &param.name, index),
             IrTypeKind::Pointer => render_pointer_arg(&mut prep, &param.ty, &param.name, index),
@@ -657,7 +733,15 @@ pub(super) fn render_call_prep(
                 render_extern_struct_arg(&mut prep, &param.ty, &param.name, index, false)
             }
             IrTypeKind::ModelReference | IrTypeKind::ModelPointer | IrTypeKind::ModelValue => {
-                render_model_arg(config, &mut prep, &param.ty, &param.name, index)
+                render_model_arg(
+                    config,
+                    &mut prep,
+                    &param.ty,
+                    &param.name,
+                    index,
+                    covered_handles,
+                    owned_opaque_value_handles,
+                )
             }
             _ => prep.args.push(render_c_arg(&param.ty, &param.name)),
         }
@@ -749,6 +833,8 @@ fn render_fixed_model_array_arg(
     ty: &IrType,
     name: &str,
     index: usize,
+    covered_handles: &BTreeSet<String>,
+    owned_opaque_value_handles: &BTreeSet<String>,
 ) {
     let c_handle = ty.handle.as_deref().unwrap_or("");
     let elem_cpp = ir_norm::fixed_array_elem_type(&ty.cpp_type).unwrap_or("");
@@ -756,6 +842,13 @@ fn render_fixed_model_array_arg(
     let handles_name = format!("cHandles{index}");
     let c_name = format!("cArg{index}");
     let elem_expr = render_fixed_model_array_elem_ptr_expr(config, elem_cpp, c_handle, "_v.ptr");
+    let has_root = model_handle_has_root(
+        config,
+        elem_cpp,
+        ty.handle.as_ref(),
+        covered_handles,
+        owned_opaque_value_handles,
+    );
     prep.setup_lines.extend(render_fixed_length_guard(name, ty));
     prep.setup_lines.push(format!(
         "{handles_name} := make([]*C.{c_handle}, len({name}))"
@@ -768,11 +861,13 @@ fn render_fixed_model_array_arg(
         "        panic(\"{go_name} handle is required but nil\")"
     ));
     prep.setup_lines.push("    }".to_string());
-    prep.setup_lines
-        .push("    if _v.root != nil && *_v.root {".to_string());
-    prep.setup_lines
-        .push(format!("        panic(\"{go_name} handle is closed\")"));
-    prep.setup_lines.push("    }".to_string());
+    if has_root {
+        prep.setup_lines
+            .push("    if _v.root != nil && *_v.root {".to_string());
+        prep.setup_lines
+            .push(format!("        panic(\"{go_name} handle is closed\")"));
+        prep.setup_lines.push("    }".to_string());
+    }
     prep.setup_lines
         .push(format!("    {handles_name}[_i] = {elem_expr}"));
     prep.setup_lines.push("}".to_string());
@@ -910,6 +1005,8 @@ fn render_model_arg(
     ty: &IrType,
     name: &str,
     index: usize,
+    covered_handles: &BTreeSet<String>,
+    owned_opaque_value_handles: &BTreeSet<String>,
 ) {
     // void model params: the Go type is unsafe.Pointer, which has no .ptr field.
     // Cast directly to *C.<handle> instead.
@@ -925,8 +1022,14 @@ fn render_model_arg(
         return;
     }
     let c_name = format!("cArg{index}");
-    prep.setup_lines
-        .extend(render_model_handle_setup(config, ty, name, &c_name));
+    prep.setup_lines.extend(render_model_handle_setup(
+        config,
+        ty,
+        name,
+        &c_name,
+        covered_handles,
+        owned_opaque_value_handles,
+    ));
     prep.args.push(c_name);
 }
 
@@ -935,16 +1038,21 @@ pub(super) fn render_model_handle_setup(
     ty: &IrType,
     name: &str,
     c_name: &str,
+    covered_handles: &BTreeSet<String>,
+    owned_opaque_value_handles: &BTreeSet<String>,
 ) -> Vec<String> {
     let handle = ty.handle.as_deref().unwrap_or("void");
     let go_name = go_model_return_type(config, ty);
     let ptr_expr = render_model_ptr_expr(config, ty, &format!("{name}.ptr"));
+    let has_root = model_arg_has_root(config, ty, covered_handles, owned_opaque_value_handles);
     let mut lines = vec![format!("var {c_name} *C.{handle}")];
     if ty.kind == IrTypeKind::ModelPointer {
         lines.push(format!("if {name} != nil {{"));
-        lines.push(format!("    if {name}.root != nil && *{name}.root {{"));
-        lines.push(format!("        panic(\"{go_name} handle is closed\")"));
-        lines.push("    }".to_string());
+        if has_root {
+            lines.push(format!("    if {name}.root != nil && *{name}.root {{"));
+            lines.push(format!("        panic(\"{go_name} handle is closed\")"));
+            lines.push("    }".to_string());
+        }
         lines.push(format!("    {c_name} = {ptr_expr}"));
         lines.push("}".to_string());
     } else {
@@ -953,12 +1061,42 @@ pub(super) fn render_model_handle_setup(
             "    panic(\"{go_name} handle is required but nil\")"
         ));
         lines.push("}".to_string());
-        lines.push(format!("if {name}.root != nil && *{name}.root {{"));
-        lines.push(format!("    panic(\"{go_name} handle is closed\")"));
-        lines.push("}".to_string());
+        if has_root {
+            lines.push(format!("if {name}.root != nil && *{name}.root {{"));
+            lines.push(format!("    panic(\"{go_name} handle is closed\")"));
+            lines.push("}".to_string());
+        }
         lines.push(format!("{c_name} = {ptr_expr}"));
     }
     lines
+}
+
+fn model_arg_has_root(
+    config: &PipelineContext,
+    ty: &IrType,
+    covered_handles: &BTreeSet<String>,
+    owned_opaque_value_handles: &BTreeSet<String>,
+) -> bool {
+    model_handle_has_root(
+        config,
+        &ty.cpp_type,
+        ty.handle.as_ref(),
+        covered_handles,
+        owned_opaque_value_handles,
+    )
+}
+
+fn model_handle_has_root(
+    config: &PipelineContext,
+    cpp_type: &str,
+    handle: Option<&String>,
+    covered_handles: &BTreeSet<String>,
+    owned_opaque_value_handles: &BTreeSet<String>,
+) -> bool {
+    config.known_model_projection(cpp_type).is_some()
+        || handle.is_some_and(|handle| {
+            covered_handles.contains(handle) || owned_opaque_value_handles.contains(handle)
+        })
 }
 
 fn render_model_ptr_expr(config: &PipelineContext, ty: &IrType, raw_expr: &str) -> String {
@@ -979,7 +1117,12 @@ pub(super) fn has_callback_param<'a>(
     params.any(|param| param.ty.kind == IrTypeKind::Callback)
 }
 
-fn infer_borrow_root_expr(params: &[&ir_norm::IrParam]) -> Option<String> {
+fn infer_borrow_root_expr(
+    config: &PipelineContext,
+    params: &[&ir_norm::IrParam],
+    covered_handles: &BTreeSet<String>,
+    owned_opaque_value_handles: &BTreeSet<String>,
+) -> Option<String> {
     let model_params = params
         .iter()
         .filter(|param| {
@@ -987,6 +1130,12 @@ fn infer_borrow_root_expr(params: &[&ir_norm::IrParam]) -> Option<String> {
                 param.ty.kind,
                 IrTypeKind::ModelReference | IrTypeKind::ModelPointer | IrTypeKind::ModelValue
             ) && base_model_cpp_type(&param.ty.cpp_type) != "void"
+                && model_arg_has_root(
+                    config,
+                    &param.ty,
+                    covered_handles,
+                    owned_opaque_value_handles,
+                )
         })
         .map(|param| param.name.as_str())
         .collect::<Vec<_>>();

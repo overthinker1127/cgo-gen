@@ -185,10 +185,17 @@ pub(super) fn render_facade_constructor(
     class: &AnalyzedFacadeClass<'_>,
     constructor: &IrFunction,
     constructor_name: &str,
+    covered_handles: &BTreeSet<String>,
+    owned_opaque_value_handles: &BTreeSet<String>,
 ) -> String {
     let constructor_params = constructor.params.iter().collect::<Vec<_>>();
     let params = render_param_list(config, &constructor_params);
-    let prep = render_call_prep(config, &constructor_params);
+    let prep = render_call_prep(
+        config,
+        &constructor_params,
+        covered_handles,
+        owned_opaque_value_handles,
+    );
 
     let mut out = format!(
         "func {constructor_name}({params}) (*{}, error) {{\n",
@@ -266,7 +273,13 @@ pub(super) fn render_general_api_method(
     covered_handles: &BTreeSet<String>,
     owned_opaque_value_handles: &BTreeSet<String>,
 ) -> String {
-    if let Some(rendered) = render_special_field_method(config, class, function) {
+    if let Some(rendered) = render_special_field_method(
+        config,
+        class,
+        function,
+        covered_handles,
+        owned_opaque_value_handles,
+    ) {
         return rendered;
     }
     if has_callback_param(function.params.iter().skip(1)) {
@@ -281,7 +294,12 @@ pub(super) fn render_general_api_method(
     let receiver = receiver_name(&class.go_name);
     let method_params = function.params.iter().skip(1).collect::<Vec<_>>();
     let params = render_param_list(config, &method_params);
-    let prep = render_call_prep(config, &method_params);
+    let prep = render_call_prep(
+        config,
+        &method_params,
+        covered_handles,
+        owned_opaque_value_handles,
+    );
     let call = format!(
         "C.{}({})",
         function.name,
@@ -330,6 +348,8 @@ fn render_special_field_method(
     config: &PipelineContext,
     class: &AnalyzedFacadeClass<'_>,
     function: &IrFunction,
+    covered_handles: &BTreeSet<String>,
+    owned_opaque_value_handles: &BTreeSet<String>,
 ) -> Option<String> {
     let accessor = function.field_accessor.as_ref()?;
     if accessor.access == FieldAccessKind::Get
@@ -351,7 +371,13 @@ fn render_special_field_method(
         return Some(render_fixed_model_array_getter_at(config, class, function));
     }
     if accessor.access == FieldAccessKind::SetAt {
-        return Some(render_fixed_model_array_setter_at(config, class, function));
+        return Some(render_fixed_model_array_setter_at(
+            config,
+            class,
+            function,
+            covered_handles,
+            owned_opaque_value_handles,
+        ));
     }
     None
 }
@@ -465,6 +491,8 @@ fn render_fixed_model_array_setter_at(
     config: &PipelineContext,
     class: &AnalyzedFacadeClass<'_>,
     function: &IrFunction,
+    covered_handles: &BTreeSet<String>,
+    owned_opaque_value_handles: &BTreeSet<String>,
 ) -> String {
     let receiver = receiver_name(&class.go_name);
     let value_param = function.params.get(2).expect("indexed setter has value");
@@ -484,7 +512,14 @@ fn render_fixed_model_array_setter_at(
         "    if {receiver}.root != nil && *{receiver}.root {{\n        panic(\"{} handle is closed\")\n    }}\n",
         class.go_name
     ));
-    for line in render_model_handle_setup(config, &value_param.ty, &value_param.name, "cArg1") {
+    for line in render_model_handle_setup(
+        config,
+        &value_param.ty,
+        &value_param.name,
+        "cArg1",
+        covered_handles,
+        owned_opaque_value_handles,
+    ) {
         out.push_str("    ");
         out.push_str(&line);
         out.push('\n');
