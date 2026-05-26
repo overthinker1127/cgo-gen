@@ -997,3 +997,195 @@ output:
     let status = Command::new(&binary).status().unwrap();
     assert!(status.success(), "generated smoke binary failed: {status}");
 }
+
+#[test]
+fn generated_wrapper_compiles_and_runs_for_operators() {
+    let root = temp_output_dir("operators");
+    fs::create_dir_all(root.join("include")).unwrap();
+    fs::write(
+        root.join("include/Vector2.hpp"),
+        r#"
+        class Vector2 {
+        public:
+            Vector2() : x_(0), y_(0) {}
+            Vector2(int x, int y) : x_(x), y_(y) {}
+
+            int X() const { return x_; }
+            int Y() const { return y_; }
+
+            Vector2 operator+(const Vector2& rhs) const {
+                return Vector2(x_ + rhs.x_, y_ + rhs.y_);
+            }
+            bool operator==(const Vector2& rhs) const {
+                return x_ == rhs.x_ && y_ == rhs.y_;
+            }
+            operator bool() const {
+                return x_ != 0 || y_ != 0;
+            }
+
+        private:
+            int x_;
+            int y_;
+        };
+
+        inline Vector2 operator-(const Vector2& lhs, const Vector2& rhs) {
+            return Vector2(lhs.X() - rhs.X(), lhs.Y() - rhs.Y());
+        }
+        "#,
+    )
+    .unwrap();
+    fs::write(
+        root.join("config.yaml"),
+        r#"
+version: 1
+input:
+  dir: include
+output:
+  dir: out
+"#,
+    )
+    .unwrap();
+
+    let config = Config::load(root.join("config.yaml")).unwrap();
+    let ctx = generator::prepare_config(&PipelineContext::new(config.clone())).unwrap();
+    let parsed = parser::parse(&ctx).unwrap();
+    let ir = ir::normalize(&ctx, &parsed).unwrap();
+    generator::generate(&ctx, &ir, true, &Default::default()).unwrap();
+
+    let smoke_cpp = config.output.dir.join("smoke.cpp");
+    fs::write(
+        &smoke_cpp,
+        format!(
+            r#"
+        #include "{}"
+        int main() {{
+            Vector2Handle* lhs = cgowrap_Vector2_new__int_int(3, 5);
+            Vector2Handle* rhs = cgowrap_Vector2_new__int_int(1, 2);
+            if (lhs == nullptr || rhs == nullptr) return 10;
+
+            Vector2Handle* sum = cgowrap_Vector2_OperPlus(lhs, rhs);
+            if (sum == nullptr) return 11;
+            if (cgowrap_Vector2_X(sum) != 4 || cgowrap_Vector2_Y(sum) != 7) return 12;
+
+            if (!cgowrap_Vector2_OperBool(sum)) return 13;
+            if (!cgowrap_Vector2_OperEqual(sum, sum)) return 14;
+            if (cgowrap_Vector2_OperEqual(lhs, rhs)) return 15;
+
+            Vector2Handle* diff = cgowrap_OperMinus(lhs, rhs);
+            if (diff == nullptr) return 16;
+            if (cgowrap_Vector2_X(diff) != 2 || cgowrap_Vector2_Y(diff) != 3) return 17;
+
+            cgowrap_Vector2_delete(diff);
+            cgowrap_Vector2_delete(sum);
+            cgowrap_Vector2_delete(rhs);
+            cgowrap_Vector2_delete(lhs);
+            return 0;
+        }}
+        "#,
+            config.output.header
+        ),
+    )
+    .unwrap();
+
+    let binary = config.output.dir.join("smoke");
+    let compiler = pick_clangxx();
+    let status = Command::new(&compiler)
+        .current_dir(&root)
+        .arg("-std=c++17")
+        .arg(config.output_dir().join(&config.output.source))
+        .arg(&smoke_cpp)
+        .arg("-I")
+        .arg(config.output_dir())
+        .arg("-I")
+        .arg(root.join("include"))
+        .arg("-o")
+        .arg(&binary)
+        .status()
+        .unwrap();
+
+    assert!(status.success(), "generated wrapper did not compile/link");
+
+    let status = Command::new(&binary).status().unwrap();
+    assert!(status.success(), "generated smoke binary failed: {status}");
+}
+
+#[test]
+fn generated_wrapper_compiles_and_runs_for_index_operator_reference_returns() {
+    let root = temp_output_dir("index_operator");
+    fs::create_dir_all(root.join("include")).unwrap();
+    fs::write(
+        root.join("include/Buffer.hpp"),
+        r#"
+        class Buffer {
+        public:
+            Buffer() : values_{1, 2, 3} {}
+            int& operator[](int index) { return values_[index]; }
+            const int& operator[](int index) const { return values_[index]; }
+        private:
+            int values_[3];
+        };
+        "#,
+    )
+    .unwrap();
+    fs::write(
+        root.join("config.yaml"),
+        r#"
+version: 1
+input:
+  dir: include
+output:
+  dir: out
+"#,
+    )
+    .unwrap();
+
+    let config = Config::load(root.join("config.yaml")).unwrap();
+    let ctx = generator::prepare_config(&PipelineContext::new(config.clone())).unwrap();
+    let parsed = parser::parse(&ctx).unwrap();
+    let ir = ir::normalize(&ctx, &parsed).unwrap();
+    generator::generate(&ctx, &ir, true, &Default::default()).unwrap();
+
+    let smoke_cpp = config.output.dir.join("smoke.cpp");
+    fs::write(
+        &smoke_cpp,
+        format!(
+            r#"
+        #include "{}"
+        int main() {{
+            BufferHandle* buffer = cgowrap_Buffer_new();
+            if (buffer == nullptr) return 10;
+            int* value = cgowrap_Buffer_OperArray__int_mut(buffer, 1);
+            if (value == nullptr || *value != 2) return 11;
+            *value = 7;
+            const int* const_value = cgowrap_Buffer_OperArray__int_const(buffer, 1);
+            if (const_value == nullptr || *const_value != 7) return 12;
+            cgowrap_Buffer_delete(buffer);
+            return 0;
+        }}
+        "#,
+            config.output.header
+        ),
+    )
+    .unwrap();
+
+    let binary = config.output.dir.join("smoke");
+    let compiler = pick_clangxx();
+    let status = Command::new(&compiler)
+        .current_dir(&root)
+        .arg("-std=c++17")
+        .arg(config.output_dir().join(&config.output.source))
+        .arg(&smoke_cpp)
+        .arg("-I")
+        .arg(config.output_dir())
+        .arg("-I")
+        .arg(root.join("include"))
+        .arg("-o")
+        .arg(&binary)
+        .status()
+        .unwrap();
+
+    assert!(status.success(), "generated wrapper did not compile/link");
+
+    let status = Command::new(&binary).status().unwrap();
+    assert!(status.success(), "generated smoke binary failed: {status}");
+}

@@ -238,6 +238,9 @@ pub(super) fn go_constructor_overload_suffix(constructor: &IrFunction) -> String
 }
 
 pub(super) fn go_facade_export_name(function: &IrFunction) -> String {
+    if let Some(operator) = &function.operator {
+        return operator_export_name(function, operator);
+    }
     let base = go_export_name(&leaf_cpp_name(&function.cpp_name));
     if !has_disambiguated_raw_overload_suffix(function) {
         return base;
@@ -246,8 +249,36 @@ pub(super) fn go_facade_export_name(function: &IrFunction) -> String {
     format!("{base}{}", go_overload_suffix(function))
 }
 
+pub(super) fn go_facade_dispatcher_export_name(function: &IrFunction) -> String {
+    if let Some(operator) = &function.operator {
+        return ir_norm::operator_name_tail(&operator.token);
+    }
+
+    go_export_name(&leaf_cpp_name(&function.cpp_name))
+}
+
 pub(super) fn go_method_export_name(function: &IrFunction) -> String {
+    if let Some(operator) = &function.operator {
+        return operator_export_name(function, operator);
+    }
     let base = go_export_name(method_name(function));
+    if !has_disambiguated_raw_overload_suffix(function) {
+        return base;
+    }
+
+    format!("{base}{}", go_overload_suffix(function))
+}
+
+pub(super) fn go_method_dispatcher_export_name(function: &IrFunction) -> String {
+    if let Some(operator) = &function.operator {
+        return ir_norm::operator_name_tail(&operator.token);
+    }
+
+    go_export_name(method_name(function))
+}
+
+fn operator_export_name(function: &IrFunction, operator: &ir_norm::IrOperator) -> String {
+    let base = ir_norm::operator_name_tail(&operator.token);
     if !has_disambiguated_raw_overload_suffix(function) {
         return base;
     }
@@ -544,6 +575,9 @@ pub(super) fn sanitize_go_token(value: &str) -> String {
 }
 
 pub(super) fn method_name(function: &IrFunction) -> &str {
+    if let Some(operator) = &function.operator {
+        return &operator.spelling;
+    }
     function
         .cpp_name
         .rsplit("::")

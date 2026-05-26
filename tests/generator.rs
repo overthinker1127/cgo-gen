@@ -41,6 +41,121 @@ fn renders_unified_go_wrapper() {
 }
 
 #[test]
+fn renders_operator_wrappers_in_c_and_go() {
+    let root = env::temp_dir().join(format!("c_go_operator_wrapper_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(root.join("include")).unwrap();
+    fs::write(
+        root.join("include/Api.hpp"),
+        r#"
+        class Value {
+        public:
+            Value() : code_(0) {}
+            explicit Value(int code) : code_(code) {}
+            Value operator+(const Value& rhs) const { return Value(code_ + rhs.code_); }
+            bool operator==(const Value& rhs) const { return code_ == rhs.code_; }
+            operator bool() const { return code_ != 0; }
+            int GetCode() const { return code_; }
+        private:
+            int code_;
+        };
+
+        inline Value operator-(const Value& lhs, const Value& rhs) {
+            return Value(lhs.GetCode() - rhs.GetCode());
+        }
+        "#,
+    )
+    .unwrap();
+    fs::write(
+        root.join("config.yaml"),
+        r#"
+version: 1
+input:
+  dir: include
+output:
+  dir: gen
+"#,
+    )
+    .unwrap();
+
+    let ctx = generator::prepare_config(&PipelineContext::new(
+        Config::load(root.join("config.yaml")).unwrap(),
+    ))
+    .unwrap();
+    let parsed = parser::parse(&ctx).unwrap();
+    let ir = ir::normalize(&ctx, &parsed).unwrap();
+    let source = generator::render_source(&ctx, &ir);
+    let go = render_go_structs(&ctx, &ir).unwrap();
+    let go_contents = &go[0].contents;
+
+    assert!(source.contains("cgowrap_Value_OperPlus"));
+    assert!(source.contains("reinterpret_cast<const Value*>(self)->operator+"));
+    assert!(source.contains("cgowrap_Value_OperEqual"));
+    assert!(source.contains("reinterpret_cast<const Value*>(self)->operator=="));
+    assert!(source.contains("cgowrap_Value_OperBool"));
+    assert!(source.contains("reinterpret_cast<const Value*>(self)->operator bool"));
+    assert!(source.contains("cgowrap_OperMinus"));
+    assert!(source.contains("operator-("));
+
+    assert!(go_contents.contains("func (v *Value) OperPlus(rhs *Value) *Value {"));
+    assert!(go_contents.contains("func (v *Value) OperEqual(rhs *Value) bool {"));
+    assert!(go_contents.contains("func (v *Value) OperBool() bool {"));
+    assert!(go_contents.contains("func OperMinus(lhs *Value, rhs *Value) *Value {"));
+}
+
+#[test]
+fn renders_operator_default_argument_dispatchers_with_valid_go_names() {
+    let root = env::temp_dir().join(format!(
+        "c_go_operator_default_dispatcher_{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(root.join("include")).unwrap();
+    fs::write(
+        root.join("include/Api.hpp"),
+        r#"
+        class Scale {
+        public:
+            explicit Scale(int factor) : factor_(factor) {}
+            int operator()(int value, int multiplier = 1) const {
+                return value * multiplier * factor_;
+            }
+        private:
+            int factor_;
+        };
+        "#,
+    )
+    .unwrap();
+    fs::write(
+        root.join("config.yaml"),
+        r#"
+version: 1
+input:
+  dir: include
+output:
+  dir: gen
+"#,
+    )
+    .unwrap();
+
+    let ctx = generator::prepare_config(&PipelineContext::new(
+        Config::load(root.join("config.yaml")).unwrap(),
+    ))
+    .unwrap();
+    let parsed = parser::parse(&ctx).unwrap();
+    let ir = ir::normalize(&ctx, &parsed).unwrap();
+    let go = render_go_structs(&ctx, &ir).unwrap();
+    let go_contents = &go[0].contents;
+
+    assert!(go_contents.contains("func (s *Scale) OperFuncInt32Int32Const("));
+    assert!(go_contents.contains("func (s *Scale) OperFuncInt32Const("));
+    assert!(go_contents.contains("func (s *Scale) OperFunc(args ...any) (int32, error) {"));
+    assert!(go_contents.contains("return s.OperFuncInt32Const(arg0), nil"));
+    assert!(go_contents.contains("return s.OperFuncInt32Int32Const(arg0, arg1), nil"));
+    assert!(!go_contents.contains("Operator()"));
+}
+
+#[test]
 fn parsed_struct_pointers_use_handle_wrappers_while_foreign_structs_stay_direct() {
     let root = std::env::temp_dir().join(format!(
         "c_go_parsed_struct_pointer_routing_{}",
@@ -888,6 +1003,7 @@ fn opaque_model_value_return_gets_synthetic_delete_and_owned_go_wrapper() {
                 owner_cpp_type: Some("Api".to_string()),
                 is_const: None,
                 field_accessor: None,
+                operator: None,
                 returns: ir::IrType {
                     kind: IrTypeKind::Opaque,
                     cpp_type: "Api*".to_string(),
@@ -904,6 +1020,7 @@ fn opaque_model_value_return_gets_synthetic_delete_and_owned_go_wrapper() {
                 owner_cpp_type: Some("Api".to_string()),
                 is_const: None,
                 field_accessor: None,
+                operator: None,
                 returns: ir::IrType {
                     kind: IrTypeKind::Void,
                     cpp_type: "void".to_string(),
@@ -920,6 +1037,7 @@ fn opaque_model_value_return_gets_synthetic_delete_and_owned_go_wrapper() {
                 owner_cpp_type: Some("Api".to_string()),
                 is_const: Some(true),
                 field_accessor: None,
+                operator: None,
                 returns: ir::IrType {
                     kind: IrTypeKind::ModelValue,
                     cpp_type: "Table::iKey".to_string(),

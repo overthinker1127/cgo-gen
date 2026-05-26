@@ -1120,6 +1120,9 @@ fn render_method_body(function: &IrFunction) -> String {
 }
 
 fn render_free_function_body(function: &IrFunction) -> String {
+    if let Some(operator) = &function.operator {
+        return render_callable_body(function, &operator.spelling, 0);
+    }
     render_callable_body(function, &function.cpp_name, 0)
 }
 
@@ -1153,6 +1156,10 @@ fn render_callable_body(function: &IrFunction, target: &str, arg_start: usize) -
             )
         }
         IrTypeKind::ModelReference => format!(
+            "    return reinterpret_cast<{}>(&{}({}));\n",
+            function.returns.c_type, target, args
+        ),
+        IrTypeKind::Reference => format!(
             "    return reinterpret_cast<{}>(&{}({}));\n",
             function.returns.c_type, target, args
         ),
@@ -1563,6 +1570,7 @@ fn make_callback_bridge_function(function: &IrFunction) -> IrFunction {
         owner_cpp_type: function.owner_cpp_type.clone(),
         is_const: function.is_const,
         field_accessor: None,
+        operator: None,
         returns: function.returns.clone(),
         params,
     }

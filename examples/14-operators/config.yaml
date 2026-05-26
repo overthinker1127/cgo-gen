@@ -1,0 +1,10 @@
+version: 1
+
+input:
+  dir: input
+  clang_args:
+    - -Iinput
+    - -std=c++17
+
+output:
+  dir: generated

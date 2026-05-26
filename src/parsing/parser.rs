@@ -1,6 +1,6 @@
 #![allow(non_upper_case_globals)]
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     ffi::{CStr, CString},
     os::raw::{c_int, c_uint, c_void},
     path::{Path, PathBuf},
@@ -12,13 +12,13 @@ use clang_sys::*;
 
 use crate::{
     domain::kind::RecordKind,
-    parsing::{compiler, macros::parse_macro_value},
+    parsing::{compiler, macros::parse_macro_value, operators},
     pipeline::context::PipelineContext,
 };
 
 pub use crate::parsing::model::{
     CppCallbackTypedef, CppConstructor, CppEnum, CppEnumVariant, CppField, CppFunction,
-    CppMacroConstant, CppMethod, CppParam, CppRecord, ParsedApi,
+    CppMacroConstant, CppMethod, CppOperator, CppOperatorToken, CppParam, CppRecord, ParsedApi,
 };
 
 impl ParsedApi {
@@ -29,6 +29,12 @@ impl ParsedApi {
                 .functions
                 .iter()
                 .filter(|function| same_path(&function.source_header, header))
+                .cloned()
+                .collect(),
+            free_operators: self
+                .free_operators
+                .iter()
+                .filter(|operator| same_path(&operator.source_header, header))
                 .cloned()
                 .collect(),
             records: self
@@ -60,6 +66,7 @@ impl ParsedApi {
 
     pub fn is_empty(&self) -> bool {
         self.functions.is_empty()
+            && self.free_operators.is_empty()
             && self.records.is_empty()
             && self.enums.is_empty()
             && self.macros.is_empty()
@@ -193,7 +200,11 @@ unsafe fn parse_translation_units(
 
 fn dedupe_api(api: &mut ParsedApi) {
     api.functions = dedupe_vec(std::mem::take(&mut api.functions));
-    api.records = dedupe_vec(std::mem::take(&mut api.records));
+    api.free_operators = dedupe_operators(std::mem::take(&mut api.free_operators));
+    for record in &mut api.records {
+        record.operators = dedupe_operators(std::mem::take(&mut record.operators));
+    }
+    api.records = dedupe_records(std::mem::take(&mut api.records));
     api.enums = dedupe_vec(std::mem::take(&mut api.enums));
     api.macros = dedupe_vec(std::mem::take(&mut api.macros));
     api.callbacks = dedupe_vec(std::mem::take(&mut api.callbacks));
@@ -205,6 +216,108 @@ fn dedupe_vec<T: Ord>(items: Vec<T>) -> Vec<T> {
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect()
+}
+
+fn dedupe_operators(items: Vec<CppOperator>) -> Vec<CppOperator> {
+    let mut by_signature = BTreeMap::<OperatorDedupeKey, CppOperator>::new();
+    for item in items {
+        by_signature
+            .entry(OperatorDedupeKey::from(&item))
+            .and_modify(|existing| {
+                existing.has_header_definition |= item.has_header_definition;
+            })
+            .or_insert(item);
+    }
+    by_signature.into_values().collect()
+}
+
+fn dedupe_records(items: Vec<CppRecord>) -> Vec<CppRecord> {
+    let mut by_signature = BTreeMap::<RecordDedupeKey, CppRecord>::new();
+    for mut item in items {
+        item.operators = dedupe_operators(item.operators);
+        by_signature
+            .entry(RecordDedupeKey::from(&item))
+            .and_modify(|existing| {
+                existing.operators = dedupe_operators(
+                    existing
+                        .operators
+                        .iter()
+                        .cloned()
+                        .chain(item.operators.iter().cloned())
+                        .collect(),
+                );
+            })
+            .or_insert(item);
+    }
+    by_signature.into_values().collect()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct RecordDedupeKey {
+    source_header: PathBuf,
+    namespace: Vec<String>,
+    name: String,
+    kind: RecordKind,
+    fields: Vec<CppField>,
+    methods: Vec<CppMethod>,
+    operators: Vec<OperatorDedupeKey>,
+    constructors: Vec<CppConstructor>,
+    has_destructor: bool,
+    has_declared_constructor: bool,
+    is_abstract: bool,
+}
+
+impl From<&CppRecord> for RecordDedupeKey {
+    fn from(value: &CppRecord) -> Self {
+        Self {
+            source_header: value.source_header.clone(),
+            namespace: value.namespace.clone(),
+            name: value.name.clone(),
+            kind: value.kind,
+            fields: value.fields.clone(),
+            methods: value.methods.clone(),
+            operators: value
+                .operators
+                .iter()
+                .map(OperatorDedupeKey::from)
+                .collect(),
+            constructors: value.constructors.clone(),
+            has_destructor: value.has_destructor,
+            has_declared_constructor: value.has_declared_constructor,
+            is_abstract: value.is_abstract,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct OperatorDedupeKey {
+    source_header: PathBuf,
+    namespace: Vec<String>,
+    owner: Option<String>,
+    spelling: String,
+    token: CppOperatorToken,
+    return_type: String,
+    return_canonical_type: String,
+    return_is_function_pointer: bool,
+    params: Vec<CppParam>,
+    is_const: bool,
+}
+
+impl From<&CppOperator> for OperatorDedupeKey {
+    fn from(value: &CppOperator) -> Self {
+        Self {
+            source_header: value.source_header.clone(),
+            namespace: value.namespace.clone(),
+            owner: value.owner.clone(),
+            spelling: value.spelling.clone(),
+            token: value.token.clone(),
+            return_type: value.return_type.clone(),
+            return_canonical_type: value.return_canonical_type.clone(),
+            return_is_function_pointer: value.return_is_function_pointer,
+            params: value.params.clone(),
+            is_const: value.is_const,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -264,15 +377,25 @@ fn collect_entity(
                     || parsed.has_destructor
                     || !parsed.fields.is_empty()
                     || !parsed.methods.is_empty()
+                    || !parsed.operators.is_empty()
                 {
                     api.records.push(parsed);
                 }
             }
         }
         CXCursor_FunctionDecl => {
-            if cursor_spelling(cursor).is_some() {
-                api.functions
-                    .push(parse_function(cursor, namespace.to_vec())?);
+            if let Some(spelling) = cursor_spelling(cursor) {
+                if operators::is_operator_spelling(&spelling) {
+                    api.free_operators.push(parse_operator(
+                        cursor,
+                        namespace.to_vec(),
+                        None,
+                        false,
+                    )?);
+                } else {
+                    api.functions
+                        .push(parse_function(cursor, namespace.to_vec())?);
+                }
             }
         }
         CXCursor_TypedefDecl => {
@@ -333,6 +456,7 @@ fn parse_record(
     };
     let mut fields = Vec::new();
     let mut methods = Vec::new();
+    let mut operators = Vec::new();
     let mut constructors = Vec::new();
     let mut has_destructor = false;
     let mut has_declared_constructor = false;
@@ -348,7 +472,9 @@ fn parse_record(
                 && unsafe { clang_getCXXAccessSpecifier(child) } == CX_CXXInvalidAccessSpecifier);
 
         match unsafe { clang_getCursorKind(child) } {
-            CXCursor_CXXMethod if unsafe { clang_CXXMethod_isPureVirtual(child) != 0 } => {
+            CXCursor_CXXMethod | CXCursor_ConversionFunction
+                if unsafe { clang_CXXMethod_isPureVirtual(child) != 0 } =>
+            {
                 is_abstract = true;
             }
             _ => {}
@@ -378,15 +504,45 @@ fn parse_record(
                     });
                 }
             }
-            CXCursor_CXXMethod => {
-                methods.push(CppMethod {
-                    name: cursor_spelling(child).unwrap_or_default(),
-                    return_type: result_type_name(child),
-                    return_canonical_type: result_canonical_type_name(child),
-                    return_is_function_pointer: result_is_function_pointer(child),
-                    params: parse_params(child),
-                    is_const: unsafe { clang_CXXMethod_isConst(child) != 0 },
-                });
+            CXCursor_CXXMethod | CXCursor_ConversionFunction => {
+                let spelling = cursor_spelling(child).unwrap_or_default();
+                let is_const = unsafe { clang_CXXMethod_isConst(child) != 0 };
+                if operators::is_operator_spelling(&spelling) {
+                    let owner = qualified_cpp_name(&namespace, &name);
+                    operators.push(parse_operator(
+                        child,
+                        namespace.clone(),
+                        Some(owner),
+                        is_const,
+                    )?);
+                } else {
+                    methods.push(CppMethod {
+                        name: spelling,
+                        return_type: result_type_name(child),
+                        return_canonical_type: result_canonical_type_name(child),
+                        return_is_function_pointer: result_is_function_pointer(child),
+                        params: parse_params(child),
+                        is_const,
+                    });
+                }
+            }
+            CXCursor_FriendDecl => {
+                for friend_child in direct_children(child) {
+                    if unsafe { clang_getCursorKind(friend_child) } != CXCursor_FunctionDecl {
+                        continue;
+                    }
+                    let Some(spelling) = cursor_spelling(friend_child) else {
+                        continue;
+                    };
+                    if operators::is_operator_spelling(&spelling) {
+                        operators.push(parse_operator(
+                            friend_child,
+                            namespace.clone(),
+                            None,
+                            false,
+                        )?);
+                    }
+                }
             }
             _ => {}
         }
@@ -399,11 +555,45 @@ fn parse_record(
         kind,
         fields,
         methods,
+        operators,
         constructors,
         has_destructor,
         has_declared_constructor,
         is_abstract,
     })
+}
+
+fn parse_operator(
+    cursor: CXCursor,
+    namespace: Vec<String>,
+    owner: Option<String>,
+    is_const: bool,
+) -> Result<CppOperator> {
+    let spelling = cursor_spelling(cursor)
+        .ok_or_else(|| anyhow!("encountered unnamed operator declaration"))?;
+    let source_header = normalized_cursor_file_path(cursor)
+        .ok_or_else(|| anyhow!("failed to determine source header for operator `{spelling}`"))?;
+    Ok(CppOperator {
+        source_header,
+        namespace,
+        owner,
+        token: operators::operator_token(&spelling),
+        spelling,
+        return_type: result_type_name(cursor),
+        return_canonical_type: result_canonical_type_name(cursor),
+        return_is_function_pointer: result_is_function_pointer(cursor),
+        params: parse_params(cursor),
+        is_const,
+        has_header_definition: operators::has_header_definition(cursor),
+    })
+}
+
+fn qualified_cpp_name(namespace: &[String], name: &str) -> String {
+    if namespace.is_empty() {
+        name.to_string()
+    } else {
+        format!("{}::{name}", namespace.join("::"))
+    }
 }
 
 fn parse_function(cursor: CXCursor, namespace: Vec<String>) -> Result<CppFunction> {

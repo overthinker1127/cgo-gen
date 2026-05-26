@@ -415,6 +415,7 @@ mod tests {
                     owner_cpp_type: Some("ThingModel".to_string()),
                     is_const: None,
                     field_accessor: None,
+                    operator: None,
                     returns: IrType {
                         kind: IrTypeKind::Opaque,
                         cpp_type: "ThingModel".to_string(),
@@ -431,6 +432,7 @@ mod tests {
                     owner_cpp_type: Some("ThingModel".to_string()),
                     is_const: None,
                     field_accessor: None,
+                    operator: None,
                     returns: IrType {
                         kind: IrTypeKind::Void,
                         cpp_type: "void".to_string(),
@@ -455,6 +457,7 @@ mod tests {
                     owner_cpp_type: Some("ThingModel".to_string()),
                     is_const: Some(true),
                     field_accessor: None,
+                    operator: None,
                     returns: IrType {
                         kind: IrTypeKind::Primitive,
                         cpp_type: "int".to_string(),
@@ -479,6 +482,7 @@ mod tests {
                     owner_cpp_type: Some("ThingModel".to_string()),
                     is_const: Some(false),
                     field_accessor: None,
+                    operator: None,
                     returns: IrType {
                         kind: IrTypeKind::Void,
                         cpp_type: "void".to_string(),
@@ -514,6 +518,7 @@ mod tests {
                     owner_cpp_type: Some("ThingModel".to_string()),
                     is_const: Some(true),
                     field_accessor: None,
+                    operator: None,
                     returns: model_type(IrTypeKind::ModelValue, "ThingModel"),
                     params: vec![IrParam {
                         name: "self".to_string(),
@@ -533,6 +538,7 @@ mod tests {
                     owner_cpp_type: Some("ThingModel".to_string()),
                     is_const: Some(false),
                     field_accessor: None,
+                    operator: None,
                     returns: IrType {
                         kind: IrTypeKind::Void,
                         cpp_type: "void".to_string(),
@@ -591,6 +597,7 @@ mod tests {
                     owner_cpp_type: Some("_DCSHISTORY".to_string()),
                     is_const: None,
                     field_accessor: None,
+                    operator: None,
                     returns: IrType {
                         kind: IrTypeKind::Opaque,
                         cpp_type: "_DCSHISTORY".to_string(),
@@ -607,6 +614,7 @@ mod tests {
                     owner_cpp_type: Some("_DCSHISTORY".to_string()),
                     is_const: None,
                     field_accessor: None,
+                    operator: None,
                     returns: IrType {
                         kind: IrTypeKind::Void,
                         cpp_type: "void".to_string(),
@@ -631,6 +639,7 @@ mod tests {
                     owner_cpp_type: Some("_DCSHISTORY".to_string()),
                     is_const: Some(true),
                     field_accessor: None,
+                    operator: None,
                     returns: IrType {
                         kind: IrTypeKind::Primitive,
                         cpp_type: "int".to_string(),
@@ -655,6 +664,7 @@ mod tests {
                     owner_cpp_type: Some("_DCSHISTORY".to_string()),
                     is_const: Some(false),
                     field_accessor: None,
+                    operator: None,
                     returns: IrType {
                         kind: IrTypeKind::Void,
                         cpp_type: "void".to_string(),

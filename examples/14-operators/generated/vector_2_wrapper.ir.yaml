@@ -1,0 +1,199 @@
+version: 1
+module: cgowrap
+source_headers:
+- ../input/vector2.hpp
+records:
+- cpp_type: Vector2
+  handle_name: Vector2Handle
+  kind: class
+opaque_types:
+- name: Vector2Handle
+  cpp_type: Vector2
+functions:
+- name: cgowrap_Vector2_new__void
+  kind: constructor
+  cpp_name: Vector2
+  method_of: Vector2Handle
+  owner_cpp_type: Vector2
+  returns:
+    kind: opaque
+    cpp_type: Vector2
+    c_type: Vector2Handle*
+    handle: Vector2Handle
+  params: []
+- name: cgowrap_Vector2_new__int_int
+  kind: constructor
+  cpp_name: Vector2
+  method_of: Vector2Handle
+  owner_cpp_type: Vector2
+  returns:
+    kind: opaque
+    cpp_type: Vector2
+    c_type: Vector2Handle*
+    handle: Vector2Handle
+  params:
+  - name: x
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+  - name: y
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+- name: cgowrap_Vector2_delete
+  kind: destructor
+  cpp_name: Vector2
+  method_of: Vector2Handle
+  owner_cpp_type: Vector2
+  returns:
+    kind: void
+    cpp_type: void
+    c_type: void
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: Vector2*
+      c_type: Vector2Handle*
+      handle: Vector2Handle
+- name: cgowrap_Vector2_X
+  kind: method
+  cpp_name: Vector2::X
+  method_of: Vector2Handle
+  owner_cpp_type: Vector2
+  is_const: true
+  returns:
+    kind: primitive
+    cpp_type: int
+    c_type: int
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: const Vector2*
+      c_type: const Vector2Handle*
+      handle: Vector2Handle
+- name: cgowrap_Vector2_Y
+  kind: method
+  cpp_name: Vector2::Y
+  method_of: Vector2Handle
+  owner_cpp_type: Vector2
+  is_const: true
+  returns:
+    kind: primitive
+    cpp_type: int
+    c_type: int
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: const Vector2*
+      c_type: const Vector2Handle*
+      handle: Vector2Handle
+- name: cgowrap_Vector2_OperBool
+  kind: method
+  cpp_name: Vector2::operator bool
+  method_of: Vector2Handle
+  owner_cpp_type: Vector2
+  is_const: true
+  operator:
+    spelling: operator bool
+    token: conversion_bool
+  returns:
+    kind: primitive
+    cpp_type: bool
+    c_type: bool
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: const Vector2*
+      c_type: const Vector2Handle*
+      handle: Vector2Handle
+- name: cgowrap_Vector2_OperPlus
+  kind: method
+  cpp_name: Vector2::operator+
+  method_of: Vector2Handle
+  owner_cpp_type: Vector2
+  is_const: true
+  operator:
+    spelling: operator+
+    token: plus
+  returns:
+    kind: model_value
+    cpp_type: Vector2
+    c_type: Vector2Handle*
+    handle: Vector2Handle
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: const Vector2*
+      c_type: const Vector2Handle*
+      handle: Vector2Handle
+  - name: rhs
+    ty:
+      kind: model_reference
+      cpp_type: const Vector2&
+      c_type: const Vector2Handle*
+      handle: Vector2Handle
+- name: cgowrap_Vector2_OperEqual
+  kind: method
+  cpp_name: Vector2::operator==
+  method_of: Vector2Handle
+  owner_cpp_type: Vector2
+  is_const: true
+  operator:
+    spelling: operator==
+    token: equal
+  returns:
+    kind: primitive
+    cpp_type: bool
+    c_type: bool
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: const Vector2*
+      c_type: const Vector2Handle*
+      handle: Vector2Handle
+  - name: rhs
+    ty:
+      kind: model_reference
+      cpp_type: const Vector2&
+      c_type: const Vector2Handle*
+      handle: Vector2Handle
+- name: cgowrap_OperMinus
+  kind: function
+  cpp_name: operator-
+  operator:
+    spelling: operator-
+    token: minus
+  returns:
+    kind: model_value
+    cpp_type: Vector2
+    c_type: Vector2Handle*
+    handle: Vector2Handle
+  params:
+  - name: lhs
+    ty:
+      kind: model_reference
+      cpp_type: const Vector2&
+      c_type: const Vector2Handle*
+      handle: Vector2Handle
+  - name: rhs
+    ty:
+      kind: model_reference
+      cpp_type: const Vector2&
+      c_type: const Vector2Handle*
+      handle: Vector2Handle
+enums: []
+constants: []
+callbacks: []
+support:
+  parser_backend: libclang
+  notes:
+  - Parsed with clang AST and normalized into a conservative C ABI IR.
+  - v1 intentionally rejects unsupported C++ constructs during type normalization.

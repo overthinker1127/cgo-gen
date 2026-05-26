@@ -9,12 +9,16 @@ mod naming;
 pub use naming::flatten_cpp_name;
 pub(crate) use naming::overload_suffix;
 use naming::{cpp_qualified, flatten_qualified_cpp_name, symbol_name};
+mod callable;
+use callable::CppCallableRef;
+mod operators;
+pub(crate) use operators::operator_name_tail;
 
 use crate::{
     config::{Config, WRAPPER_PREFIX},
     parser::{
         CppCallbackTypedef, CppConstructor, CppEnum, CppField, CppFunction, CppMacroConstant,
-        CppMethod, CppParam, CppRecord, ParsedApi,
+        CppMethod, CppOperator, CppOperatorToken, CppParam, CppRecord, ParsedApi,
     },
     parsing::macros::MacroConstantKind,
     pipeline::context::PipelineContext,
@@ -60,8 +64,16 @@ pub struct IrFunction {
     pub is_const: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub field_accessor: Option<IrFieldAccessor>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub operator: Option<IrOperator>,
     pub returns: IrType,
     pub params: Vec<IrParam>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct IrOperator {
+    pub spelling: String,
+    pub token: CppOperatorToken,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -132,13 +144,73 @@ pub struct SkippedDeclaration {
     pub reason: String,
 }
 
-struct NormalizeEnv<'a> {
+pub(super) struct NormalizeEnv<'a> {
     config: &'a Config,
     abstract_types: &'a BTreeSet<String>,
     callback_names: &'a BTreeSet<String>,
     known_enum_types: &'a BTreeSet<String>,
     known_records: &'a [IrRecord],
     skipped_declarations: &'a mut Vec<SkippedDeclaration>,
+}
+
+fn push_skipped_declaration(env: &mut NormalizeEnv<'_>, cpp_name: String, reason: String) {
+    env.skipped_declarations
+        .push(SkippedDeclaration { cpp_name, reason });
+}
+
+fn callable_skip_reason(
+    callable: CppCallableRef<'_>,
+    cpp_params: &[CppParam],
+    env: &NormalizeEnv<'_>,
+) -> Option<String> {
+    let signature = callable.return_signature();
+    let return_type = Some((
+        signature.ty,
+        signature.canonical_ty,
+        signature.is_function_pointer,
+    ));
+    function_pointer_reason(return_type, cpp_params, env.callback_names)
+        .or_else(|| double_pointer_reason(Some((signature.ty, signature.canonical_ty)), cpp_params))
+        .or_else(|| {
+            raw_unsafe_by_value_reason(
+                Some((signature.ty, signature.canonical_ty)),
+                cpp_params,
+                env.callback_names,
+                env.known_enum_types,
+                env.known_records,
+            )
+        })
+}
+
+fn normalize_callable_return(
+    env: &NormalizeEnv<'_>,
+    callable: CppCallableRef<'_>,
+) -> Result<IrType> {
+    let signature = callable.return_signature();
+    normalize_return_type_with_canonical(
+        env.config,
+        signature.ty,
+        signature.canonical_ty,
+        env.abstract_types,
+        env.callback_names,
+        env.known_enum_types,
+        env.known_records,
+    )
+}
+
+fn normalize_cpp_params(env: &NormalizeEnv<'_>, cpp_params: &[CppParam]) -> Result<Vec<IrParam>> {
+    cpp_params
+        .iter()
+        .map(|param| {
+            normalize_param(
+                env.config,
+                param,
+                env.callback_names,
+                env.known_enum_types,
+                env.known_records,
+            )
+        })
+        .collect()
 }
 
 pub fn normalize(ctx: &PipelineContext, api: &ParsedApi) -> Result<IrModule> {
@@ -211,6 +283,31 @@ pub fn normalize(ctx: &PipelineContext, api: &ParsedApi) -> Result<IrModule> {
                 emitted_signatures,
             ) {
                 if let Some(function) = normalize_function(&mut env, function, params)? {
+                    functions.push(function);
+                }
+            }
+        }
+
+        let free_operator_signature_groups = collect_operator_signature_groups(&api.free_operators);
+        let mut emitted_free_operator_signatures =
+            BTreeMap::<(String, bool), BTreeSet<Vec<String>>>::new();
+        for operator in &api.free_operators {
+            let group_key = (operator_cpp_name(operator), operator.is_const);
+            let existing_signatures = free_operator_signature_groups
+                .get(&group_key)
+                .cloned()
+                .unwrap_or_default();
+            let emitted_signatures = emitted_free_operator_signatures
+                .entry(group_key)
+                .or_default();
+            for params in default_argument_param_variants(
+                &operator.params,
+                &existing_signatures,
+                emitted_signatures,
+            ) {
+                if let Some(function) =
+                    operators::normalize_operator(&mut env, None, operator, params)?
+                {
                     functions.push(function);
                 }
             }
@@ -542,6 +639,25 @@ fn collect_method_signature_groups(
     out
 }
 
+fn collect_operator_signature_groups(
+    operators: &[CppOperator],
+) -> BTreeMap<(String, bool), BTreeSet<Vec<String>>> {
+    let mut out = BTreeMap::new();
+    for operator in operators {
+        out.entry((operator_cpp_name(operator), operator.is_const))
+            .or_insert_with(BTreeSet::new)
+            .insert(cpp_param_signature(&operator.params));
+    }
+    out
+}
+
+fn operator_cpp_name(operator: &CppOperator) -> String {
+    match &operator.owner {
+        Some(owner) => format!("{owner}::{}", operator.spelling),
+        None => cpp_qualified(&operator.namespace, &operator.spelling),
+    }
+}
+
 fn default_argument_param_variants<'a>(
     params: &'a [CppParam],
     existing_signatures: &BTreeSet<Vec<String>>,
@@ -600,6 +716,7 @@ fn normalize_record(
             owner_cpp_type: Some(qualified.clone()),
             is_const: None,
             field_accessor: None,
+            operator: None,
             returns: IrType {
                 kind: IrTypeKind::Opaque,
                 cpp_type: qualified.clone(),
@@ -642,6 +759,7 @@ fn normalize_record(
         owner_cpp_type: Some(qualified.clone()),
         is_const: None,
         field_accessor: None,
+        operator: None,
         returns: primitive_type("void"),
         params: vec![IrParam {
             name: "self".to_string(),
@@ -669,6 +787,27 @@ fn normalize_record(
             emitted_signatures,
         ) {
             if let Some(function) = normalize_method(env, record, handle_name, method, params)? {
+                functions.push(function);
+            }
+        }
+    }
+
+    let operator_signature_groups = collect_operator_signature_groups(&record.operators);
+    let mut emitted_operator_signatures = BTreeMap::<(String, bool), BTreeSet<Vec<String>>>::new();
+    for operator in &record.operators {
+        let group_key = (operator_cpp_name(operator), operator.is_const);
+        let existing_signatures = operator_signature_groups
+            .get(&group_key)
+            .cloned()
+            .unwrap_or_default();
+        let emitted_signatures = emitted_operator_signatures.entry(group_key).or_default();
+        let owner = operator.owner.as_ref().map(|_| (record, handle_name));
+        for params in default_argument_param_variants(
+            &operator.params,
+            &existing_signatures,
+            emitted_signatures,
+        ) {
+            if let Some(function) = operators::normalize_operator(env, owner, operator, params)? {
                 functions.push(function);
             }
         }
@@ -828,6 +967,7 @@ fn make_struct_field_getter(
             access: FieldAccessKind::Get,
             array_len: None,
         }),
+        operator: None,
         returns,
         params: vec![IrParam {
             name: "self".to_string(),
@@ -858,6 +998,7 @@ fn make_struct_field_setter(
             access: FieldAccessKind::Set,
             array_len: None,
         }),
+        operator: None,
         returns: primitive_type("void"),
         params: vec![
             IrParam {
@@ -902,6 +1043,7 @@ fn make_struct_field_indexed_getter(
             access: FieldAccessKind::GetAt,
             array_len: Some(array_len),
         }),
+        operator: None,
         returns: IrType {
             kind: IrTypeKind::ModelPointer,
             cpp_type: format!("{elem_cpp}*"),
@@ -951,6 +1093,7 @@ fn make_struct_field_indexed_setter(
             access: FieldAccessKind::SetAt,
             array_len: Some(array_len),
         }),
+        operator: None,
         returns: primitive_type("void"),
         params: vec![
             IrParam {
@@ -1032,6 +1175,7 @@ fn normalize_constructor(
         owner_cpp_type: Some(qualified.clone()),
         is_const: None,
         field_accessor: None,
+        operator: None,
         returns: IrType {
             kind: IrTypeKind::Opaque,
             cpp_type: qualified.clone(),
@@ -1062,43 +1206,8 @@ fn normalize_method(
 ) -> Result<Option<IrFunction>> {
     let qualified = cpp_qualified(&record.namespace, &record.name);
     let cpp_name = format!("{}::{}", qualified, method.name);
-    if is_operator_name(&method.name) {
-        env.skipped_declarations.push(SkippedDeclaration {
-            cpp_name,
-            reason: "operator declarations are unsupported in v1".to_string(),
-        });
-        return Ok(None);
-    }
-    if let Some(reason) = function_pointer_reason(
-        Some((
-            &method.return_type,
-            &method.return_canonical_type,
-            method.return_is_function_pointer,
-        )),
-        cpp_params,
-        env.callback_names,
-    ) {
-        env.skipped_declarations
-            .push(SkippedDeclaration { cpp_name, reason });
-        return Ok(None);
-    }
-    if let Some(reason) = double_pointer_reason(
-        Some((&method.return_type, &method.return_canonical_type)),
-        cpp_params,
-    ) {
-        env.skipped_declarations
-            .push(SkippedDeclaration { cpp_name, reason });
-        return Ok(None);
-    }
-    if let Some(reason) = raw_unsafe_by_value_reason(
-        Some((&method.return_type, &method.return_canonical_type)),
-        cpp_params,
-        env.callback_names,
-        env.known_enum_types,
-        env.known_records,
-    ) {
-        env.skipped_declarations
-            .push(SkippedDeclaration { cpp_name, reason });
+    if let Some(reason) = callable_skip_reason(CppCallableRef::Method(method), cpp_params, env) {
+        push_skipped_declaration(env, cpp_name, reason);
         return Ok(None);
     }
     let mut params = Vec::new();
@@ -1119,20 +1228,7 @@ fn normalize_method(
             handle: Some(handle_name.to_string()),
         },
     });
-    params.extend(
-        cpp_params
-            .iter()
-            .map(|param| {
-                normalize_param(
-                    env.config,
-                    param,
-                    env.callback_names,
-                    env.known_enum_types,
-                    env.known_records,
-                )
-            })
-            .collect::<Result<Vec<_>>>()?,
-    );
+    params.extend(normalize_cpp_params(env, cpp_params)?);
     Ok(Some(IrFunction {
         name: symbol_name(env.config, &record.namespace, &record.name, &method.name),
         kind: IrFunctionKind::Method,
@@ -1141,15 +1237,8 @@ fn normalize_method(
         owner_cpp_type: Some(qualified),
         is_const: Some(method.is_const),
         field_accessor: None,
-        returns: normalize_return_type_with_canonical(
-            env.config,
-            &method.return_type,
-            &method.return_canonical_type,
-            env.abstract_types,
-            env.callback_names,
-            env.known_enum_types,
-            env.known_records,
-        )?,
+        operator: None,
+        returns: normalize_callable_return(env, CppCallableRef::Method(method))?,
         params,
     }))
 }
@@ -1160,43 +1249,9 @@ fn normalize_function(
     cpp_params: &[CppParam],
 ) -> Result<Option<IrFunction>> {
     let cpp_name = cpp_qualified(&function.namespace, &function.name);
-    if is_operator_name(&function.name) {
-        env.skipped_declarations.push(SkippedDeclaration {
-            cpp_name,
-            reason: "operator declarations are unsupported in v1".to_string(),
-        });
-        return Ok(None);
-    }
-    if let Some(reason) = function_pointer_reason(
-        Some((
-            &function.return_type,
-            &function.return_canonical_type,
-            function.return_is_function_pointer,
-        )),
-        cpp_params,
-        env.callback_names,
-    ) {
-        env.skipped_declarations
-            .push(SkippedDeclaration { cpp_name, reason });
-        return Ok(None);
-    }
-    if let Some(reason) = double_pointer_reason(
-        Some((&function.return_type, &function.return_canonical_type)),
-        cpp_params,
-    ) {
-        env.skipped_declarations
-            .push(SkippedDeclaration { cpp_name, reason });
-        return Ok(None);
-    }
-    if let Some(reason) = raw_unsafe_by_value_reason(
-        Some((&function.return_type, &function.return_canonical_type)),
-        cpp_params,
-        env.callback_names,
-        env.known_enum_types,
-        env.known_records,
-    ) {
-        env.skipped_declarations
-            .push(SkippedDeclaration { cpp_name, reason });
+    if let Some(reason) = callable_skip_reason(CppCallableRef::Function(function), cpp_params, env)
+    {
+        push_skipped_declaration(env, cpp_name, reason);
         return Ok(None);
     }
     Ok(Some(IrFunction {
@@ -1207,27 +1262,9 @@ fn normalize_function(
         owner_cpp_type: None,
         is_const: None,
         field_accessor: None,
-        returns: normalize_return_type_with_canonical(
-            env.config,
-            &function.return_type,
-            &function.return_canonical_type,
-            env.abstract_types,
-            env.callback_names,
-            env.known_enum_types,
-            env.known_records,
-        )?,
-        params: cpp_params
-            .iter()
-            .map(|param| {
-                normalize_param(
-                    env.config,
-                    param,
-                    env.callback_names,
-                    env.known_enum_types,
-                    env.known_records,
-                )
-            })
-            .collect::<Result<Vec<_>>>()?,
+        operator: None,
+        returns: normalize_callable_return(env, CppCallableRef::Function(function))?,
+        params: normalize_cpp_params(env, cpp_params)?,
     }))
 }
 
@@ -1944,13 +1981,28 @@ fn normalize_type(cpp_type: &str, callback_names: &BTreeSet<String>) -> Result<I
             })
         }
         _ if trimmed.ends_with('&')
-            && is_supported_primitive(trimmed.trim_end_matches('&').trim()) =>
+            && is_supported_primitive(
+                trimmed
+                    .trim_end_matches('&')
+                    .trim()
+                    .trim_start_matches("const ")
+                    .trim(),
+            ) =>
         {
-            let base = trimmed.trim_end_matches('&').trim();
+            let base = trimmed
+                .trim_end_matches('&')
+                .trim()
+                .trim_start_matches("const ")
+                .trim();
+            let const_prefix = if trimmed.trim_end_matches('&').trim().starts_with("const ") {
+                "const "
+            } else {
+                ""
+            };
             Ok(IrType {
                 kind: IrTypeKind::Reference,
                 cpp_type: trimmed.to_string(),
-                c_type: format!("{}*", canonical_primitive_c_type(base)),
+                c_type: format!("{const_prefix}{}*", canonical_primitive_c_type(base)),
                 handle: None,
             })
         }
@@ -2062,10 +2114,6 @@ fn is_named_callback_param(param: &CppParam, callback_names: &BTreeSet<String>) 
         .callback_typedef
         .as_deref()
         .is_some_and(|name| callback_names.contains(name))
-}
-
-fn is_operator_name(name: &str) -> bool {
-    name.trim().starts_with("operator")
 }
 
 fn is_supported_primitive(name: &str) -> bool {
@@ -2220,7 +2268,9 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
-    use crate::parser::{CppFunction, CppMethod, CppParam, CppRecord, ParsedApi};
+    use crate::parser::{
+        CppFunction, CppOperator, CppOperatorToken, CppParam, CppRecord, ParsedApi,
+    };
 
     #[test]
     fn normalizes_struct_timeval_pointer_and_reference_as_external_structs() {
@@ -2355,6 +2405,7 @@ mod tests {
             owner_cpp_type: Some("Api".to_string()),
             is_const: Some(true),
             field_accessor: None,
+            operator: None,
             returns: IrType {
                 kind: IrTypeKind::ModelValue,
                 cpp_type: "ThingModel*".to_string(),
@@ -2390,6 +2441,7 @@ mod tests {
             owner_cpp_type: Some("SessionManager".to_string()),
             is_const: Some(false),
             field_accessor: None,
+            operator: None,
             returns: IrType {
                 kind: IrTypeKind::ModelValue,
                 cpp_type: "SharedRegion*".to_string(),
@@ -2513,6 +2565,7 @@ mod tests {
             owner_cpp_type: Some("ThingModel".to_string()),
             is_const: None,
             field_accessor: None,
+            operator: None,
             returns: ty.clone(),
             params: vec![],
         };
@@ -2555,6 +2608,7 @@ mod tests {
             owner_cpp_type: Some("Widget".to_string()),
             is_const: Some(false),
             field_accessor: None,
+            operator: None,
             returns: primitive_type("void"),
             params: vec![
                 IrParam {
@@ -2577,18 +2631,24 @@ mod tests {
     }
 
     #[test]
-    fn normalize_env_preserves_skipped_declaration_reporting() {
+    fn normalize_env_generates_operator_function_metadata() {
         let api = ParsedApi {
             headers: vec!["Widget.hpp".to_string()],
             functions: vec![],
+            free_operators: vec![],
             records: vec![CppRecord {
                 source_header: PathBuf::from("Widget.hpp"),
                 namespace: vec![],
                 name: "Widget".to_string(),
                 kind: RecordKind::Class,
                 fields: vec![],
-                methods: vec![CppMethod {
-                    name: "operator+".to_string(),
+                methods: vec![],
+                operators: vec![CppOperator {
+                    source_header: PathBuf::from("Widget.hpp"),
+                    namespace: vec![],
+                    owner: Some("Widget".to_string()),
+                    spelling: "operator+".to_string(),
+                    token: CppOperatorToken::Plus,
                     return_type: "int".to_string(),
                     return_canonical_type: "int".to_string(),
                     return_is_function_pointer: false,
@@ -2601,6 +2661,7 @@ mod tests {
                         has_default: false,
                     }],
                     is_const: true,
+                    has_header_definition: false,
                 }],
                 constructors: vec![],
                 has_destructor: false,
@@ -2614,14 +2675,16 @@ mod tests {
 
         let ir = normalize(&PipelineContext::new(Config::default()), &api).unwrap();
 
-        assert_eq!(ir.support.skipped_declarations.len(), 1);
+        assert!(ir.support.skipped_declarations.is_empty());
+        let operator = ir
+            .functions
+            .iter()
+            .find(|function| function.name == "cgowrap_Widget_OperPlus")
+            .unwrap();
+        assert_eq!(operator.cpp_name, "Widget::operator+");
         assert_eq!(
-            ir.support.skipped_declarations[0].cpp_name,
-            "Widget::operator+"
-        );
-        assert_eq!(
-            ir.support.skipped_declarations[0].reason,
-            "operator declarations are unsupported in v1"
+            operator.operator.as_ref().unwrap().token,
+            CppOperatorToken::Plus
         );
     }
 
@@ -2740,6 +2803,7 @@ mod tests {
             enums: vec![],
             macros: vec![],
             callbacks: vec![],
+            free_operators: vec![],
             functions: vec![CppFunction {
                 source_header: PathBuf::from("DcsHistory.h"),
                 namespace: vec![],

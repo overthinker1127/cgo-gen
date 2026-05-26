@@ -68,7 +68,7 @@ pub(super) fn collect_free_function_dispatchers<'a>(
         .filter(|function| has_disambiguated_raw_overload_suffix(function))
     {
         by_export
-            .entry(go_export_name(&leaf_cpp_name(&function.cpp_name)))
+            .entry(go_facade_dispatcher_export_name(function))
             .or_default()
             .push(function);
     }
@@ -93,7 +93,7 @@ pub(super) fn collect_method_dispatchers<'a>(
         .filter(|function| has_disambiguated_raw_overload_suffix(function))
     {
         by_export
-            .entry(go_export_name(method_name(function)))
+            .entry(go_method_dispatcher_export_name(function))
             .or_default()
             .push(function);
     }

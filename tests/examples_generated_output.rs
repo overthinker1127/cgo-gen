@@ -196,4 +196,14 @@ fn checked_in_example_generated_outputs_are_current() {
             "macro_constants_wrapper.ir.yaml",
         ],
     );
+    assert_generated_matches(
+        "examples/14-operators",
+        None,
+        &[
+            "vector_2_wrapper.h",
+            "vector_2_wrapper.cpp",
+            "vector_2_wrapper.go",
+            "vector_2_wrapper.ir.yaml",
+        ],
+    );
 }
