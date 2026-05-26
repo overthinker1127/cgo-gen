@@ -50,7 +50,7 @@ input:
 output:
   dir: out
 "#,
-            project_root.join("examples/02-cpp-class/input").display()
+            project_root.join("examples/cpp-class/input").display()
         ),
     )
     .unwrap();
@@ -98,12 +98,12 @@ fn generated_wrapper_compiles_and_runs_against_sample_cpp_library() {
         .current_dir(&project_root)
         .arg("-std=c++17")
         .arg(config.output_dir().join(&config.output.source))
-        .arg(project_root.join("examples/02-cpp-class/input/counter.cpp"))
+        .arg(project_root.join("examples/cpp-class/input/counter.cpp"))
         .arg(&smoke_cpp)
         .arg("-I")
         .arg(config.output_dir())
         .arg("-I")
-        .arg(project_root.join("examples/02-cpp-class/input"))
+        .arg(project_root.join("examples/cpp-class/input"))
         .arg("-o")
         .arg(&binary)
         .status()

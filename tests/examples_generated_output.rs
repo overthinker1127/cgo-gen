@@ -57,7 +57,7 @@ fn assert_generated_matches(example: &str, go_module: Option<&str>, expected_fil
 #[test]
 fn checked_in_example_generated_outputs_are_current() {
     assert_generated_matches(
-        "examples/01-c-library",
+        "examples/c-library",
         None,
         &[
             "calculator_wrapper.h",
@@ -67,7 +67,7 @@ fn checked_in_example_generated_outputs_are_current() {
         ],
     );
     assert_generated_matches(
-        "examples/02-cpp-class",
+        "examples/cpp-class",
         None,
         &[
             "counter_wrapper.h",
@@ -77,7 +77,7 @@ fn checked_in_example_generated_outputs_are_current() {
         ],
     );
     assert_generated_matches(
-        "examples/03-cpp-inventory",
+        "examples/cpp-inventory",
         None,
         &[
             "inventory_item_wrapper.h",
@@ -91,8 +91,8 @@ fn checked_in_example_generated_outputs_are_current() {
         ],
     );
     assert_generated_matches(
-        "examples/04-go-module",
-        Some("example.com/cgo-gen/examples/04-go-module/generated"),
+        "examples/go-module",
+        Some("example.com/cgo-gen/examples/go-module/generated"),
         &[
             "score_wrapper.h",
             "score_wrapper.cpp",
@@ -103,7 +103,7 @@ fn checked_in_example_generated_outputs_are_current() {
         ],
     );
     assert_generated_matches(
-        "examples/05-headers-list",
+        "examples/headers-list",
         None,
         &[
             "selected_widget_wrapper.h",
@@ -117,7 +117,7 @@ fn checked_in_example_generated_outputs_are_current() {
         ],
     );
     assert_generated_matches(
-        "examples/06-owner-return",
+        "examples/owner-return",
         None,
         &[
             "session_factory_wrapper.h",
@@ -127,7 +127,7 @@ fn checked_in_example_generated_outputs_are_current() {
         ],
     );
     assert_generated_matches(
-        "examples/07-enums",
+        "examples/enums",
         None,
         &[
             "device_controller_wrapper.h",
@@ -137,7 +137,7 @@ fn checked_in_example_generated_outputs_are_current() {
         ],
     );
     assert_generated_matches(
-        "examples/08-overloading",
+        "examples/overloading",
         None,
         &[
             "overload_math_wrapper.h",
@@ -147,7 +147,7 @@ fn checked_in_example_generated_outputs_are_current() {
         ],
     );
     assert_generated_matches(
-        "examples/09-struct-fields",
+        "examples/struct-fields",
         None,
         &[
             "sensor_reading_wrapper.h",
@@ -157,7 +157,7 @@ fn checked_in_example_generated_outputs_are_current() {
         ],
     );
     assert_generated_matches(
-        "examples/10-strings",
+        "examples/strings",
         None,
         &[
             "string_tool_wrapper.h",
@@ -167,8 +167,8 @@ fn checked_in_example_generated_outputs_are_current() {
         ],
     );
     assert_generated_matches(
-        "examples/11-static-shared-library",
-        Some("example.com/cgo-gen/examples/11-static-shared-library/generated"),
+        "examples/static-shared-library",
+        Some("example.com/cgo-gen/examples/static-shared-library/generated"),
         &[
             "library_math_wrapper.h",
             "library_math_wrapper.cpp",
@@ -179,7 +179,7 @@ fn checked_in_example_generated_outputs_are_current() {
         ],
     );
     assert_generated_matches(
-        "examples/12-default-arguments",
+        "examples/default-arguments",
         None,
         &[
             "default_arguments_wrapper.h",
@@ -189,7 +189,7 @@ fn checked_in_example_generated_outputs_are_current() {
         ],
     );
     assert_generated_matches(
-        "examples/13-macros",
+        "examples/macros",
         None,
         &[
             "macro_constants_wrapper.go",
@@ -197,7 +197,7 @@ fn checked_in_example_generated_outputs_are_current() {
         ],
     );
     assert_generated_matches(
-        "examples/14-operators",
+        "examples/operators",
         None,
         &[
             "vector_2_wrapper.h",
