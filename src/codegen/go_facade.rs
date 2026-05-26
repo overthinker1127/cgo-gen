@@ -19,8 +19,9 @@ use callbacks::{
     render_callback_type, used_callbacks,
 };
 use calls::{
-    collect_free_function_dispatchers, collect_method_dispatchers, has_byte_array_params,
-    has_pointer_params, has_string_params, has_void_model_params, render_free_function,
+    collect_free_function_dispatchers, collect_method_dispatchers,
+    covered_dispatcher_function_names, has_byte_array_params, has_pointer_params,
+    has_string_params, has_void_model_params, render_free_function,
     render_free_function_dispatcher, render_method_dispatcher,
 };
 use classes::{
@@ -303,7 +304,11 @@ fn render_go_facade_file(input: GoFacadeFile<'_, '_>) -> String {
             .map(|projection| projection.handle_name.clone()),
     );
 
+    let covered_free_function_names = covered_dispatcher_function_names(&free_function_dispatchers);
     for function in functions {
+        if covered_free_function_names.contains(&function.name) {
+            continue;
+        }
         out.push_str(&render_free_function(
             config,
             function,
@@ -313,7 +318,12 @@ fn render_go_facade_file(input: GoFacadeFile<'_, '_>) -> String {
         out.push('\n');
     }
     for dispatcher in &free_function_dispatchers {
-        out.push_str(&render_free_function_dispatcher(config, dispatcher));
+        out.push_str(&render_free_function_dispatcher(
+            config,
+            dispatcher,
+            &covered_handles,
+            owned_opaque_value_handles,
+        ));
         out.push('\n');
     }
 
@@ -352,6 +362,7 @@ fn render_go_facade_file(input: GoFacadeFile<'_, '_>) -> String {
     }
 
     for (class, dispatchers) in method_dispatchers {
+        let covered_method_names = covered_dispatcher_function_names(&dispatchers);
         out.push_str(&render_facade_class(class));
         out.push('\n');
         let constructor_names = go_constructor_export_names(class);
@@ -371,6 +382,9 @@ fn render_go_facade_file(input: GoFacadeFile<'_, '_>) -> String {
         out.push_str(&render_handle_helpers(class));
         out.push('\n');
         for method in &class.methods {
+            if covered_method_names.contains(&method.name) {
+                continue;
+            }
             out.push_str(&render_general_api_method(
                 config,
                 class,
@@ -381,7 +395,13 @@ fn render_go_facade_file(input: GoFacadeFile<'_, '_>) -> String {
             out.push('\n');
         }
         for dispatcher in &dispatchers {
-            out.push_str(&render_method_dispatcher(config, class, dispatcher));
+            out.push_str(&render_method_dispatcher(
+                config,
+                class,
+                dispatcher,
+                &covered_handles,
+                owned_opaque_value_handles,
+            ));
             out.push('\n');
         }
     }

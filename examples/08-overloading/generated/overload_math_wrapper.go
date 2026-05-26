@@ -81,29 +81,12 @@ func optionalOverloadMathHandle(o *OverloadMath) *C.OverloadMathHandle {
     return o.ptr
 }
 
-func (o *OverloadMath) AddInt32Int32(lhs int32, rhs int32) float64 {
-    if o == nil || o.ptr == nil {
-        return 0
-    }
-    if o.root != nil && *o.root {
-        panic("OverloadMath handle is closed")
-    }
-    return float64(C.cgowrap_OverloadMath_Add__int_int_mut(o.ptr, C.int(lhs), C.int(rhs)))
-}
-
-func (o *OverloadMath) AddFloat64Float64(lhs float64, rhs float64) float64 {
-    if o == nil || o.ptr == nil {
-        return 0
-    }
-    if o.root != nil && *o.root {
-        panic("OverloadMath handle is closed")
-    }
-    return float64(C.cgowrap_OverloadMath_Add__double_double_mut(o.ptr, C.double(lhs), C.double(rhs)))
-}
-
 func (o *OverloadMath) Add(args ...any) (float64, error) {
     if o == nil || o.ptr == nil {
         return 0, fmt.Errorf("OverloadMath receiver is nil")
+    }
+    if o.root != nil && *o.root {
+        panic("OverloadMath handle is closed")
     }
     switch len(args) {
     case 2:
@@ -111,14 +94,16 @@ func (o *OverloadMath) Add(args ...any) (float64, error) {
             arg0, ok0 := args[0].(float64)
             arg1, ok1 := args[1].(float64)
             if ok0 && ok1 {
-                return o.AddFloat64Float64(arg0, arg1), nil
+                result := C.cgowrap_OverloadMath_Add__double_double_mut(o.ptr, C.double(arg0), C.double(arg1))
+                return float64(result), nil
             }
         }
         {
             arg0, ok0 := args[0].(int32)
             arg1, ok1 := args[1].(int32)
             if ok0 && ok1 {
-                return o.AddInt32Int32(arg0, arg1), nil
+                result := C.cgowrap_OverloadMath_Add__int_int_mut(o.ptr, C.int(arg0), C.int(arg1))
+                return float64(result), nil
             }
         }
     }

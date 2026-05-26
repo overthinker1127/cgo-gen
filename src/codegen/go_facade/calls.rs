@@ -14,6 +14,17 @@ use super::{
     model_return_uses_inline_owned_literal, support::*,
 };
 
+#[derive(Clone, Copy)]
+enum ReturnMode {
+    Direct,
+    Dispatcher,
+}
+
+struct ReturnHandleContext<'a> {
+    covered_handles: &'a BTreeSet<String>,
+    owned_opaque_value_handles: &'a BTreeSet<String>,
+}
+
 pub(super) fn render_free_function(
     config: &PipelineContext,
     function: &IrFunction,
@@ -55,6 +66,16 @@ pub(super) fn render_free_function(
     ));
     out.push_str("}\n");
     out
+}
+
+pub(super) fn covered_dispatcher_function_names(
+    dispatchers: &[OverloadDispatcher<'_>],
+) -> BTreeSet<String> {
+    dispatchers
+        .iter()
+        .flat_map(|dispatcher| dispatcher.functions.iter())
+        .map(|function| function.name.clone())
+        .collect()
 }
 
 pub(super) fn collect_free_function_dispatchers<'a>(
@@ -202,41 +223,42 @@ fn dispatcher_zero_return(config: &PipelineContext, function: &IrFunction) -> Op
 pub(super) fn render_free_function_dispatcher(
     config: &PipelineContext,
     dispatcher: &OverloadDispatcher<'_>,
+    covered_handles: &BTreeSet<String>,
+    owned_opaque_value_handles: &BTreeSet<String>,
 ) -> String {
-    render_dispatcher(config, dispatcher, None, |function, args| {
-        format!("{}({})", go_facade_export_name(function), args.join(", "))
-    })
+    render_dispatcher(
+        config,
+        dispatcher,
+        None,
+        covered_handles,
+        owned_opaque_value_handles,
+    )
 }
 
 pub(super) fn render_method_dispatcher(
     config: &PipelineContext,
     class: &AnalyzedFacadeClass<'_>,
     dispatcher: &OverloadDispatcher<'_>,
+    covered_handles: &BTreeSet<String>,
+    owned_opaque_value_handles: &BTreeSet<String>,
 ) -> String {
     let receiver = receiver_name(&class.go_name);
     render_dispatcher(
         config,
         dispatcher,
         Some((receiver.as_str(), class.go_name.as_str())),
-        |function, args| {
-            format!(
-                "{receiver}.{}({})",
-                go_method_export_name(function),
-                args.join(", ")
-            )
-        },
+        covered_handles,
+        owned_opaque_value_handles,
     )
 }
 
-fn render_dispatcher<FCall>(
+fn render_dispatcher(
     config: &PipelineContext,
     dispatcher: &OverloadDispatcher<'_>,
     receiver: Option<(&str, &str)>,
-    typed_call: FCall,
-) -> String
-where
-    FCall: Fn(&IrFunction, &[String]) -> String,
-{
+    covered_handles: &BTreeSet<String>,
+    owned_opaque_value_handles: &BTreeSet<String>,
+) -> String {
     let first = dispatcher.functions[0];
     let direct_sig = go_return_sig(config, &first.returns);
     let dispatcher_sig = dispatcher_return_sig(&direct_sig).unwrap();
@@ -266,6 +288,9 @@ where
         out.push_str(&format!(
             "    if {receiver_name} == nil || {receiver_name}.ptr == nil {{\n        {error_return}\n    }}\n"
         ));
+        out.push_str(&format!(
+            "    if {receiver_name}.root != nil && *{receiver_name}.root {{\n        panic(\"{class_name} handle is closed\")\n    }}\n"
+        ));
     }
 
     let mut by_arity = BTreeMap::<usize, Vec<&IrFunction>>::new();
@@ -280,7 +305,13 @@ where
     for (arity, functions) in by_arity {
         out.push_str(&format!("    case {arity}:\n"));
         for function in functions {
-            out.push_str(&render_dispatcher_candidate(config, function, &typed_call));
+            out.push_str(&render_dispatcher_candidate(
+                config,
+                function,
+                receiver,
+                covered_handles,
+                owned_opaque_value_handles,
+            ));
         }
     }
     out.push_str("    }\n");
@@ -294,18 +325,16 @@ where
     out
 }
 
-fn render_dispatcher_candidate<FCall>(
+fn render_dispatcher_candidate(
     config: &PipelineContext,
     function: &IrFunction,
-    typed_call: &FCall,
-) -> String
-where
-    FCall: Fn(&IrFunction, &[String]) -> String,
-{
+    receiver: Option<(&str, &str)>,
+    covered_handles: &BTreeSet<String>,
+    owned_opaque_value_handles: &BTreeSet<String>,
+) -> String {
     let params = dispatcher_params(function);
     let mut out = String::new();
     out.push_str("        {\n");
-    let mut arg_names = Vec::new();
     let mut ok_names = Vec::new();
     for (index, param) in params.iter().enumerate() {
         let arg_name = format!("arg{index}");
@@ -314,7 +343,6 @@ where
         out.push_str(&format!(
             "            {arg_name}, {ok_name} := args[{index}].({go_type})\n"
         ));
-        arg_names.push(arg_name);
         ok_names.push(ok_name);
     }
     let condition = if ok_names.is_empty() {
@@ -322,30 +350,79 @@ where
     } else {
         ok_names.join(" && ")
     };
-    let call = typed_call(function, &arg_names);
     out.push_str(&format!("            if {condition} {{\n"));
-    out.push_str(&format!(
-        "                {}\n",
-        dispatcher_success_return(config, function, &call)
+    out.push_str(&indent_lines(
+        &render_dispatcher_inline_return(
+            config,
+            function,
+            receiver,
+            covered_handles,
+            owned_opaque_value_handles,
+        ),
+        12,
     ));
     out.push_str("            }\n");
     out.push_str("        }\n");
     out
 }
 
-fn dispatcher_success_return(
+fn render_dispatcher_inline_return(
     config: &PipelineContext,
     function: &IrFunction,
-    call: &str,
+    receiver: Option<(&str, &str)>,
+    covered_handles: &BTreeSet<String>,
+    owned_opaque_value_handles: &BTreeSet<String>,
 ) -> String {
-    let sig = go_return_sig(config, &function.returns);
-    if sig.is_empty() {
-        format!("{call}\n                return nil")
-    } else if sig.contains("error") {
-        format!("return {call}")
+    let params = dispatcher_params(function)
+        .into_iter()
+        .enumerate()
+        .map(|(index, param)| {
+            let mut rebound = param.clone();
+            rebound.name = format!("arg{index}");
+            rebound
+        })
+        .collect::<Vec<_>>();
+    let param_refs = params.iter().collect::<Vec<_>>();
+    let has_callback = has_callback_param(param_refs.iter().copied());
+    let prep = if has_callback {
+        let param_offset = if receiver.is_some() { 1 } else { 0 };
+        render_callback_call_prep(config, function, &param_refs, param_offset)
     } else {
-        format!("return {call}, nil")
-    }
+        render_call_prep(config, &param_refs)
+    };
+    let call_name = if has_callback {
+        format!("C.{}_bridge", function.name)
+    } else {
+        format!("C.{}", function.name)
+    };
+    let call_args = if let Some((receiver_name, _)) = receiver {
+        std::iter::once(format!("{receiver_name}.ptr"))
+            .chain(prep.args)
+            .collect::<Vec<_>>()
+    } else {
+        prep.args
+    };
+    let call = format!("{call_name}({})", call_args.join(", "));
+    let borrow_root = receiver
+        .map(|(receiver_name, _)| format!("{receiver_name}.root"))
+        .or_else(|| infer_borrow_root_expr(&param_refs));
+
+    let mut out = String::new();
+    out.push_str(&indented_lines(&prep.setup_lines));
+    out.push_str(&indented_lines(&prep.defer_lines));
+    out.push_str(&render_go_call_return_with_mode(
+        config,
+        function,
+        &call,
+        &prep.post_call_lines,
+        borrow_root,
+        ReturnHandleContext {
+            covered_handles,
+            owned_opaque_value_handles,
+        },
+        ReturnMode::Dispatcher,
+    ));
+    out
 }
 
 fn dispatcher_error_return(
@@ -739,6 +816,20 @@ pub(super) fn indented_lines(lines: &[String]) -> String {
         .collect::<String>()
 }
 
+fn indent_lines(lines: &str, spaces: usize) -> String {
+    let prefix = " ".repeat(spaces);
+    lines
+        .lines()
+        .map(|line| {
+            if line.is_empty() {
+                "\n".to_string()
+            } else {
+                format!("{prefix}{line}\n")
+            }
+        })
+        .collect()
+}
+
 pub(super) fn has_string_params<'a>(
     mut params: impl Iterator<Item = &'a ir_norm::IrParam>,
 ) -> bool {
@@ -845,11 +936,37 @@ pub(super) fn render_go_call_return(
     covered_handles: &BTreeSet<String>,
     owned_opaque_value_handles: &BTreeSet<String>,
 ) -> String {
+    render_go_call_return_with_mode(
+        config,
+        function,
+        call,
+        post_call_lines,
+        borrow_root,
+        ReturnHandleContext {
+            covered_handles,
+            owned_opaque_value_handles,
+        },
+        ReturnMode::Direct,
+    )
+}
+
+fn render_go_call_return_with_mode(
+    config: &PipelineContext,
+    function: &IrFunction,
+    call: &str,
+    post_call_lines: &[String],
+    borrow_root: Option<String>,
+    handles: ReturnHandleContext<'_>,
+    mode: ReturnMode,
+) -> String {
     let ty = &function.returns;
     match ty.kind {
         IrTypeKind::Void => {
             let mut out = format!("    {call}\n");
             out.push_str(&indented_lines(post_call_lines));
+            if matches!(mode, ReturnMode::Dispatcher) {
+                out.push_str("    return nil\n");
+            }
             out
         }
         IrTypeKind::String => {
@@ -912,22 +1029,26 @@ pub(super) fn render_go_call_return(
             let go_type = go_pointer_return_type(ty).unwrap();
             let mut out = format!("    raw := {call}\n");
             out.push_str(&indented_lines(post_call_lines));
-            out.push_str(&format!("    return ({go_type})(unsafe.Pointer(raw))\n"));
+            let suffix = dispatcher_success_suffix(mode);
+            out.push_str(&format!(
+                "    return ({go_type})(unsafe.Pointer(raw)){suffix}\n"
+            ));
             out
         }
         _ if is_model_wrapper_return(ty) => {
             let go_name = go_model_return_type(config, ty);
             let mut out = format!("    raw := {call}\n");
             out.push_str(&indented_lines(post_call_lines));
+            let suffix = dispatcher_success_suffix(mode);
             if go_name == "unsafe.Pointer" {
-                out.push_str("    return unsafe.Pointer(raw)\n");
+                out.push_str(&format!("    return unsafe.Pointer(raw){suffix}\n"));
             } else {
                 let ptr_expr = cast_raw_to_projection_handle(config, ty, "raw");
                 if model_return_has_wrapper_helpers(
                     config,
                     ty,
-                    covered_handles,
-                    owned_opaque_value_handles,
+                    handles.covered_handles,
+                    handles.owned_opaque_value_handles,
                 ) {
                     let helper = if model_return_uses_inline_owned_literal(config, function, ty) {
                         format!("&{go_name}{{ptr: {ptr_expr}, owned: true, root: new(bool)}}")
@@ -938,11 +1059,11 @@ pub(super) fn render_go_call_return(
                         format!("newBorrowed{go_name}({ptr_expr}, {root_expr})")
                     };
                     out.push_str(&format!(
-                        "    if raw == nil {{\n        return nil\n    }}\n    return {helper}\n"
+                        "    if raw == nil {{\n        return nil{suffix}\n    }}\n    return {helper}{suffix}\n"
                     ));
                 } else {
                     out.push_str(&format!(
-                        "    if raw == nil {{\n        return nil\n    }}\n    return &{go_name}{{ptr: {ptr_expr}}}\n"
+                        "    if raw == nil {{\n        return nil{suffix}\n    }}\n    return &{go_name}{{ptr: {ptr_expr}}}{suffix}\n"
                     ));
                 }
             }
@@ -952,13 +1073,26 @@ pub(super) fn render_go_call_return(
             let go_type = go_value_type(config, ty).unwrap();
             let mut out = String::new();
             if go_type == "bool" {
+                let suffix = dispatcher_success_suffix(mode);
                 out.push_str(&format!("    result := {call}\n"));
                 out.push_str(&indented_lines(post_call_lines));
-                out.push_str("    return bool(result)\n");
-            } else {
+                out.push_str(&format!("    return bool(result){suffix}\n"));
+            } else if post_call_lines.is_empty() && matches!(mode, ReturnMode::Direct) {
                 out.push_str(&format!("    return {go_type}({call})\n"));
+            } else {
+                let suffix = dispatcher_success_suffix(mode);
+                out.push_str(&format!("    result := {call}\n"));
+                out.push_str(&indented_lines(post_call_lines));
+                out.push_str(&format!("    return {go_type}(result){suffix}\n"));
             }
             out
         }
+    }
+}
+
+fn dispatcher_success_suffix(mode: ReturnMode) -> &'static str {
+    match mode {
+        ReturnMode::Direct => "",
+        ReturnMode::Dispatcher => ", nil",
     }
 }

@@ -211,28 +211,37 @@ output:
     let go = &go_files[0].contents;
 
     assert!(go.contains("import \"fmt\""), "expected fmt import:\n{go}");
-    assert!(go.contains("func ApplyInt32(value int32) bool {"));
-    assert!(go.contains("func ApplyBool(value bool) bool {"));
+    assert!(!go.contains("func ApplyInt32(value int32) bool {"));
+    assert!(!go.contains("func ApplyBool(value bool) bool {"));
     assert!(go.contains("func Apply(args ...any) (bool, error) {"));
-    assert!(go.contains("return ApplyInt32(arg0), nil"));
-    assert!(go.contains("return ApplyBool(arg0), nil"));
-    assert!(go.contains("func LabelInt32(value int32) (string, error) {"));
-    assert!(go.contains("func LabelBool(value bool) (string, error) {"));
+    assert!(go.contains("result := C.cgowrap_apply__int(C.int(arg0))"));
+    assert!(go.contains("result := C.cgowrap_apply__bool(C.bool(arg0))"));
+    assert!(!go.contains("return ApplyInt32(arg0), nil"));
+    assert!(!go.contains("return ApplyBool(arg0), nil"));
+    assert!(!go.contains("func LabelInt32(value int32) (string, error) {"));
+    assert!(!go.contains("func LabelBool(value bool) (string, error) {"));
     assert!(go.contains("func Label(args ...any) (string, error) {"));
-    assert!(go.contains("return LabelInt32(arg0)"));
-    assert!(go.contains("return LabelBool(arg0)"));
+    assert!(go.contains("raw := C.cgowrap_label__int(C.int(arg0))"));
+    assert!(go.contains("raw := C.cgowrap_label__bool(C.bool(arg0))"));
+    assert!(!go.contains("return LabelInt32(arg0)"));
+    assert!(!go.contains("return LabelBool(arg0)"));
     assert!(go.contains("return \"\", fmt.Errorf(\"no matching overload for Label\")"));
-    assert!(go.contains("func (w *Widget) SetInt32(value int32) bool {"));
-    assert!(go.contains("func (w *Widget) SetBool(value bool) bool {"));
+    assert!(!go.contains("func (w *Widget) SetInt32(value int32) bool {"));
+    assert!(!go.contains("func (w *Widget) SetBool(value bool) bool {"));
     assert!(go.contains("func (w *Widget) Set(args ...any) (bool, error) {"));
-    assert!(go.contains("return w.SetInt32(arg0), nil"));
-    assert!(go.contains("return w.SetBool(arg0), nil"));
+    assert!(go.contains("panic(\"Widget handle is closed\")"));
+    assert!(go.contains("result := C.cgowrap_Widget_set__int_mut(w.ptr, C.int(arg0))"));
+    assert!(go.contains("result := C.cgowrap_Widget_set__bool_mut(w.ptr, C.bool(arg0))"));
+    assert!(!go.contains("return w.SetInt32(arg0), nil"));
+    assert!(!go.contains("return w.SetBool(arg0), nil"));
     assert!(go.contains("fmt.Errorf(\"no matching overload for Widget.Set\""));
-    assert!(go.contains("func (w *Widget) DescribeInt32(value int32) (string, error) {"));
-    assert!(go.contains("func (w *Widget) DescribeBool(value bool) (string, error) {"));
+    assert!(!go.contains("func (w *Widget) DescribeInt32(value int32) (string, error) {"));
+    assert!(!go.contains("func (w *Widget) DescribeBool(value bool) (string, error) {"));
     assert!(go.contains("func (w *Widget) Describe(args ...any) (string, error) {"));
-    assert!(go.contains("return w.DescribeInt32(arg0)"));
-    assert!(go.contains("return w.DescribeBool(arg0)"));
+    assert!(go.contains("raw := C.cgowrap_Widget_describe__int_mut(w.ptr, C.int(arg0))"));
+    assert!(go.contains("raw := C.cgowrap_Widget_describe__bool_mut(w.ptr, C.bool(arg0))"));
+    assert!(!go.contains("return w.DescribeInt32(arg0)"));
+    assert!(!go.contains("return w.DescribeBool(arg0)"));
     assert!(go.contains("return \"\", fmt.Errorf(\"Widget receiver is nil\")"));
     assert!(go.contains("return \"\", fmt.Errorf(\"no matching overload for Widget.Describe\")"));
 }
@@ -326,16 +335,68 @@ output:
     assert!(source.contains("return reinterpret_cast<Widget*>(self)->set(value);"));
     assert!(source.contains("return reinterpret_cast<Widget*>(self)->set(value, notify);"));
 
-    assert!(go.contains("func ApplyInt32(value int32) int32 {"));
-    assert!(go.contains("func ApplyInt32Bool(value int32, notify bool) int32 {"));
+    assert!(!go.contains("func ApplyInt32(value int32) int32 {"));
+    assert!(!go.contains("func ApplyInt32Bool(value int32, notify bool) int32 {"));
     assert!(go.contains("func Apply(args ...any) (int32, error) {"));
-    assert!(go.contains("return ApplyInt32(arg0), nil"));
-    assert!(go.contains("return ApplyInt32Bool(arg0, arg1), nil"));
-    assert!(go.contains("func (w *Widget) SetInt32(value int32) int32 {"));
-    assert!(go.contains("func (w *Widget) SetInt32Bool(value int32, notify bool) int32 {"));
+    assert!(go.contains("result := C.cgowrap_apply__int(C.int(arg0))"));
+    assert!(go.contains("result := C.cgowrap_apply__int_bool(C.int(arg0), C.bool(arg1))"));
+    assert!(go.contains("return int32(result), nil"));
+    assert!(!go.contains("func (w *Widget) SetInt32(value int32) int32 {"));
+    assert!(!go.contains("func (w *Widget) SetInt32Bool(value int32, notify bool) int32 {"));
     assert!(go.contains("func (w *Widget) Set(args ...any) (int32, error) {"));
-    assert!(go.contains("return w.SetInt32(arg0), nil"));
-    assert!(go.contains("return w.SetInt32Bool(arg0, arg1), nil"));
+    assert!(go.contains("result := C.cgowrap_Widget_set__int_mut(w.ptr, C.int(arg0))"));
+    assert!(go.contains(
+        "result := C.cgowrap_Widget_set__int_bool_mut(w.ptr, C.int(arg0), C.bool(arg1))"
+    ));
+}
+
+#[test]
+fn renders_callback_overload_dispatcher_with_inline_bridge_call() {
+    let root = std::env::temp_dir().join(format!(
+        "c_go_overload_callback_dispatcher_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("include")).unwrap();
+    std::fs::write(
+        root.join("include/Api.hpp"),
+        r#"
+        typedef void (*EventCallback)(int code);
+
+        void install(EventCallback cb) {}
+        void install(int id) {}
+        "#,
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("config.yaml"),
+        r#"
+version: 1
+input:
+  dir: include
+output:
+  dir: gen
+"#,
+    )
+    .unwrap();
+
+    let config = Config::load(root.join("config.yaml")).unwrap();
+    let ctx = PipelineContext::new(config);
+    let parsed = parser::parse(&ctx).unwrap();
+    let ir = ir::normalize(&ctx, &parsed).unwrap();
+    let go_files = render_go_structs(&ctx, &ir).unwrap();
+    assert_eq!(go_files.len(), 1, "expected one Go facade file");
+    let go = &go_files[0].contents;
+
+    assert!(go.contains("type EventCallback func(code int32)"));
+    assert!(!go.contains("func InstallEventCallbackCallback(cb EventCallback)"));
+    assert!(!go.contains("func InstallInt32(id int32)"));
+    assert!(go.contains("func Install(args ...any) error {"));
+    assert!(go.contains("cgowrap_install__callback_eventcallback_cb0.fn = arg0"));
+    assert!(go.contains("C.cgowrap_install__callback_eventcallback_bridge(C.bool(arg0 != nil))"));
+    assert!(go.contains("C.cgowrap_install__int(C.int(arg0))"));
+    assert!(!go.contains("return InstallEventCallbackCallback(arg0)"));
+    assert!(!go.contains("return InstallInt32(arg0)"));
 }
 
 #[test]

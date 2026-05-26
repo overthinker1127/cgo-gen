@@ -147,11 +147,16 @@ output:
     let go = render_go_structs(&ctx, &ir).unwrap();
     let go_contents = &go[0].contents;
 
-    assert!(go_contents.contains("func (s *Scale) OperFuncInt32Int32Const("));
-    assert!(go_contents.contains("func (s *Scale) OperFuncInt32Const("));
+    assert!(!go_contents.contains("func (s *Scale) OperFuncInt32Int32Const("));
+    assert!(!go_contents.contains("func (s *Scale) OperFuncInt32Const("));
     assert!(go_contents.contains("func (s *Scale) OperFunc(args ...any) (int32, error) {"));
-    assert!(go_contents.contains("return s.OperFuncInt32Const(arg0), nil"));
-    assert!(go_contents.contains("return s.OperFuncInt32Int32Const(arg0, arg1), nil"));
+    assert!(
+        go_contents.contains("result := C.cgowrap_Scale_OperFunc__int_const(s.ptr, C.int(arg0))")
+    );
+    assert!(go_contents.contains(
+        "result := C.cgowrap_Scale_OperFunc__int_int_const(s.ptr, C.int(arg0), C.int(arg1))"
+    ));
+    assert!(go_contents.contains("return int32(result), nil"));
     assert!(!go_contents.contains("Operator()"));
 }
 
@@ -1382,6 +1387,9 @@ output:
 
     assert!(go_text.contains("func (s *SYSIFMONITORIODSM) SetBModifyFlag(value bool) {"));
     assert!(!go_text.contains("SetBModifyFlagBool("));
-    assert!(go_text.contains("func (a *Api) SetFlagBool(value bool) {"));
-    assert!(go_text.contains("func (a *Api) SetFlagInt32(value int32) {"));
+    assert!(!go_text.contains("func (a *Api) SetFlagBool(value bool) {"));
+    assert!(!go_text.contains("func (a *Api) SetFlagInt32(value int32) {"));
+    assert!(go_text.contains("func (a *Api) SetFlag(args ...any) error {"));
+    assert!(go_text.contains("C.cgowrap_Api_SetFlag__bool_mut(a.ptr, C.bool(arg0))"));
+    assert!(go_text.contains("C.cgowrap_Api_SetFlag__int_mut(a.ptr, C.int(arg0))"));
 }
