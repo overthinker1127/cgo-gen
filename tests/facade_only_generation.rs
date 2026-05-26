@@ -108,6 +108,11 @@ output:
     assert!(model_go.contains("func (t *ThingModel) SetValue(value int32) {"));
     assert!(api_go.contains("func (a *Api) GetThing(id int32, out *ThingModel) bool {"));
     assert!(api_go.contains("func (a *Api) GetThingPtr(id int32, out *ThingModel) bool {"));
-    assert!(api_go.contains("requireThingModelHandle(out)"));
-    assert!(api_go.contains("optionalThingModelHandle(out)"));
+    assert!(api_go.contains("if out == nil || out.ptr == nil {"));
+    assert!(api_go.contains("panic(\"ThingModel handle is required but nil\")"));
+    assert!(api_go.contains("if out != nil {"));
+    assert!(api_go.contains("if out.root != nil && *out.root {"));
+    assert!(api_go.contains("panic(\"ThingModel handle is closed\")"));
+    assert!(!api_go.contains(&format!("{}ThingModelHandle(out)", "require")));
+    assert!(!api_go.contains(&format!("{}ThingModelHandle(out)", "optional")));
 }

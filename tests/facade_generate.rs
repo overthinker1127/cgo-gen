@@ -296,8 +296,8 @@ output:
 
     assert!(go_facade.contains("type NsLeg struct {"));
     assert!(go_facade.contains("func NewNsLeg(parent *NsLeg) (*NsLeg, error) {"));
-    assert!(go_facade.contains("if parent == nil {"));
-    assert!(go_facade.contains("panic(\"reference facade/model argument cannot be nil\")"));
+    assert!(go_facade.contains("if parent == nil || parent.ptr == nil {"));
+    assert!(go_facade.contains("panic(\"NsLeg handle is required but nil\")"));
     assert!(go_facade.contains("cArg0 = parent.ptr"));
     assert!(go_facade.contains("type Api struct {"));
     assert!(go_facade.contains("func (a *Api) GetValue() int32 {"));
@@ -371,19 +371,18 @@ output:
     assert!(go_facade.contains("func (a *Api) Clear() int32 {"));
     assert!(go_facade.contains("return int32(C.cgowrap_Api_Clear(a.ptr))"));
     assert!(go_facade.contains("func (a *Api) GetThing(id int32, out *ThingModel) bool {"));
-    assert!(go_facade.contains("requireThingModelHandle(out)"));
-    assert!(
-        go_facade
-            .contains("C.cgowrap_Api_GetThing(a.ptr, C.int(id), requireThingModelHandle(out))")
-    );
+    assert!(go_facade.contains("var cArg1 *C.ThingModelHandle"));
+    assert!(go_facade.contains("if out == nil || out.ptr == nil {"));
+    assert!(go_facade.contains("panic(\"ThingModel handle is required but nil\")"));
+    assert!(go_facade.contains("if out.root != nil && *out.root {"));
+    assert!(go_facade.contains("panic(\"ThingModel handle is closed\")"));
+    assert!(go_facade.contains("cArg1 = out.ptr"));
+    assert!(go_facade.contains("C.cgowrap_Api_GetThing(a.ptr, C.int(id), cArg1)"));
     assert!(go_facade.contains("func (a *Api) GetThingByKey(key string, out *ThingModel) bool {"));
     assert!(go_facade.contains("cArg0 := C.CString(key)"));
     assert!(go_facade.contains("defer C.free(unsafe.Pointer(cArg0))"));
-    assert!(go_facade.contains("optionalThingModelHandle(out)"));
-    assert!(
-        go_facade
-            .contains("C.cgowrap_Api_GetThingByKey(a.ptr, cArg0, optionalThingModelHandle(out))")
-    );
+    assert!(go_facade.contains("if out != nil {"));
+    assert!(go_facade.contains("C.cgowrap_Api_GetThingByKey(a.ptr, cArg0, cArg1)"));
     assert!(!go_facade.contains("mapThingModelFromHandle"));
 }
 
@@ -943,9 +942,12 @@ output:
     assert!(go_facade.contains("if pos == nil {"));
     assert!(go_facade.contains("panic(\"pos reference is nil\")"));
     assert!(go_facade.contains("cArg0 := C.int32_t(*pos)"));
-    assert!(go_facade.contains(
-        "result := C.cgowrap_ApiClient_NextWebhook(a.ptr, &cArg0, requireWebhookRecordHandle(out))"
-    ));
+    assert!(go_facade.contains("var cArg1 *C.WebhookRecordHandle"));
+    assert!(go_facade.contains("if out == nil || out.ptr == nil {"));
+    assert!(go_facade.contains("panic(\"WebhookRecord handle is required but nil\")"));
+    assert!(go_facade.contains("if out.root != nil && *out.root {"));
+    assert!(go_facade.contains("panic(\"WebhookRecord handle is closed\")"));
+    assert!(go_facade.contains("result := C.cgowrap_ApiClient_NextWebhook(a.ptr, &cArg0, cArg1)"));
     assert!(go_facade.contains("*pos = int32(cArg0)"));
     assert!(go_facade.contains("return bool(result)"));
 

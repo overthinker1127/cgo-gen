@@ -10,19 +10,21 @@ import "errors"
 
 func OperMinus(lhs *Vector2, rhs *Vector2) *Vector2 {
     var cArg0 *C.Vector2Handle
-    if lhs == nil {
-        panic("reference facade/model argument cannot be nil")
+    if lhs == nil || lhs.ptr == nil {
+        panic("Vector2 handle is required but nil")
     }
-    if lhs != nil {
-        cArg0 = lhs.ptr
+    if lhs.root != nil && *lhs.root {
+        panic("Vector2 handle is closed")
     }
+    cArg0 = lhs.ptr
     var cArg1 *C.Vector2Handle
-    if rhs == nil {
-        panic("reference facade/model argument cannot be nil")
+    if rhs == nil || rhs.ptr == nil {
+        panic("Vector2 handle is required but nil")
     }
-    if rhs != nil {
-        cArg1 = rhs.ptr
+    if rhs.root != nil && *rhs.root {
+        panic("Vector2 handle is closed")
     }
+    cArg1 = rhs.ptr
     raw := C.cgowrap_OperMinus(cArg0, cArg1)
     if raw == nil {
         return nil
@@ -81,26 +83,6 @@ func newBorrowedVector2(ptr *C.Vector2Handle, root *bool) *Vector2 {
     return &Vector2{ptr: ptr, root: root}
 }
 
-func requireVector2Handle(v *Vector2) *C.Vector2Handle {
-    if v == nil || v.ptr == nil {
-        panic("Vector2 handle is required but nil")
-    }
-    if v.root != nil && *v.root {
-        panic("Vector2 handle is closed")
-    }
-    return v.ptr
-}
-
-func optionalVector2Handle(v *Vector2) *C.Vector2Handle {
-    if v == nil {
-        return nil
-    }
-    if v.root != nil && *v.root {
-        panic("Vector2 handle is closed")
-    }
-    return v.ptr
-}
-
 func (v *Vector2) X() int32 {
     if v == nil || v.ptr == nil {
         return 0
@@ -140,12 +122,13 @@ func (v *Vector2) OperPlus(rhs *Vector2) *Vector2 {
         panic("Vector2 handle is closed")
     }
     var cArg0 *C.Vector2Handle
-    if rhs == nil {
-        panic("reference facade/model argument cannot be nil")
+    if rhs == nil || rhs.ptr == nil {
+        panic("Vector2 handle is required but nil")
     }
-    if rhs != nil {
-        cArg0 = rhs.ptr
+    if rhs.root != nil && *rhs.root {
+        panic("Vector2 handle is closed")
     }
+    cArg0 = rhs.ptr
     raw := C.cgowrap_Vector2_OperPlus(v.ptr, cArg0)
     if raw == nil {
         return nil
@@ -161,12 +144,13 @@ func (v *Vector2) OperEqual(rhs *Vector2) bool {
         panic("Vector2 handle is closed")
     }
     var cArg0 *C.Vector2Handle
-    if rhs == nil {
-        panic("reference facade/model argument cannot be nil")
+    if rhs == nil || rhs.ptr == nil {
+        panic("Vector2 handle is required but nil")
     }
-    if rhs != nil {
-        cArg0 = rhs.ptr
+    if rhs.root != nil && *rhs.root {
+        panic("Vector2 handle is closed")
     }
+    cArg0 = rhs.ptr
     result := C.cgowrap_Vector2_OperEqual(v.ptr, cArg0)
     return bool(result)
 }

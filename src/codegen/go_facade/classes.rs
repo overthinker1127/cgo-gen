@@ -13,7 +13,8 @@ use super::{
     AnalyzedFacadeClass,
     calls::{
         cast_raw_to_projection_handle, has_callback_param, indented_lines, render_call_prep,
-        render_callback_method, render_go_call_return, render_model_handle_arg, render_param_list,
+        render_callback_method, render_go_call_return, render_model_handle_setup,
+        render_param_list,
     },
     ensure_unique_method_exports, go_model_return_type, go_nil_return_stmt, go_param_supported,
     go_param_type, go_return_sig, method_supported,
@@ -240,7 +241,6 @@ pub(super) fn render_facade_close(class: &AnalyzedFacadeClass<'_>) -> String {
 pub(super) fn render_handle_helpers(class: &AnalyzedFacadeClass<'_>) -> String {
     let go_name = &class.go_name;
     let handle = &class.handle_name;
-    let receiver = receiver_name(go_name);
     format!(
         "func newOwned{go_name}(ptr *C.{handle}) *{go_name} {{\n\
          \x20   if ptr == nil {{\n\
@@ -255,26 +255,6 @@ pub(super) fn render_handle_helpers(class: &AnalyzedFacadeClass<'_>) -> String {
          \x20       return nil\n\
          \x20   }}\n\
          \x20   return &{go_name}{{ptr: ptr, root: root}}\n\
-         }}\n\
-         \n\
-         func require{go_name}Handle({receiver} *{go_name}) *C.{handle} {{\n\
-         \x20   if {receiver} == nil || {receiver}.ptr == nil {{\n\
-         \x20       panic(\"{go_name} handle is required but nil\")\n\
-         \x20   }}\n\
-         \x20   if {receiver}.root != nil && *{receiver}.root {{\n\
-         \x20       panic(\"{go_name} handle is closed\")\n\
-         \x20   }}\n\
-         \x20   return {receiver}.ptr\n\
-         }}\n\
-         \n\
-         func optional{go_name}Handle({receiver} *{go_name}) *C.{handle} {{\n\
-         \x20   if {receiver} == nil {{\n\
-         \x20       return nil\n\
-         \x20   }}\n\
-         \x20   if {receiver}.root != nil && *{receiver}.root {{\n\
-         \x20       panic(\"{go_name} handle is closed\")\n\
-         \x20   }}\n\
-         \x20   return {receiver}.ptr\n\
          }}\n"
     )
 }
@@ -490,8 +470,6 @@ fn render_fixed_model_array_setter_at(
     let value_param = function.params.get(2).expect("indexed setter has value");
     let go_name =
         go_param_type(config, &value_param.ty).unwrap_or_else(|| "*unsafe.Pointer".to_string());
-    let handle_arg = render_model_handle_arg(config, &value_param.ty, &value_param.name)
-        .unwrap_or_else(|| format!("{}.ptr", value_param.name));
     let mut out = format!(
         "func ({receiver} *{}) {}(index int, {} {}) {{\n",
         class.go_name,
@@ -506,24 +484,15 @@ fn render_fixed_model_array_setter_at(
         "    if {receiver}.root != nil && *{receiver}.root {{\n        panic(\"{} handle is closed\")\n    }}\n",
         class.go_name
     ));
-    if render_model_handle_arg(config, &value_param.ty, &value_param.name).is_none() {
-        out.push_str(&format!(
-            "    var cArg1 *C.{}\n    if {} == nil {{\n        panic(\"reference facade/model argument cannot be nil\")\n    }}\n    if {} != nil {{\n        cArg1 = {}.ptr\n    }}\n",
-            value_param.ty.handle.as_deref().unwrap_or("void"),
-            value_param.name,
-            value_param.name,
-            value_param.name
-        ));
-        out.push_str(&format!(
-            "    C.{}({receiver}.ptr, C.int(index), cArg1)\n",
-            function.name
-        ));
-    } else {
-        out.push_str(&format!(
-            "    C.{}({receiver}.ptr, C.int(index), {})\n",
-            function.name, handle_arg
-        ));
+    for line in render_model_handle_setup(config, &value_param.ty, &value_param.name, "cArg1") {
+        out.push_str("    ");
+        out.push_str(&line);
+        out.push('\n');
     }
+    out.push_str(&format!(
+        "    C.{}({receiver}.ptr, C.int(index), cArg1)\n",
+        function.name
+    ));
     out.push_str("}\n");
     out
 }

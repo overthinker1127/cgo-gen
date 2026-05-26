@@ -51,26 +51,6 @@ func newBorrowedSelectedCounter(ptr *C.SelectedCounterHandle, root *bool) *Selec
     return &SelectedCounter{ptr: ptr, root: root}
 }
 
-func requireSelectedCounterHandle(s *SelectedCounter) *C.SelectedCounterHandle {
-    if s == nil || s.ptr == nil {
-        panic("SelectedCounter handle is required but nil")
-    }
-    if s.root != nil && *s.root {
-        panic("SelectedCounter handle is closed")
-    }
-    return s.ptr
-}
-
-func optionalSelectedCounterHandle(s *SelectedCounter) *C.SelectedCounterHandle {
-    if s == nil {
-        return nil
-    }
-    if s.root != nil && *s.root {
-        panic("SelectedCounter handle is closed")
-    }
-    return s.ptr
-}
-
 func (s *SelectedCounter) Increment(value int32) int32 {
     if s == nil || s.ptr == nil {
         return 0

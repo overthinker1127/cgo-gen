@@ -51,26 +51,6 @@ func newBorrowedManagedSession(ptr *C.ManagedSessionHandle, root *bool) *Managed
     return &ManagedSession{ptr: ptr, root: root}
 }
 
-func requireManagedSessionHandle(m *ManagedSession) *C.ManagedSessionHandle {
-    if m == nil || m.ptr == nil {
-        panic("ManagedSession handle is required but nil")
-    }
-    if m.root != nil && *m.root {
-        panic("ManagedSession handle is closed")
-    }
-    return m.ptr
-}
-
-func optionalManagedSessionHandle(m *ManagedSession) *C.ManagedSessionHandle {
-    if m == nil {
-        return nil
-    }
-    if m.root != nil && *m.root {
-        panic("ManagedSession handle is closed")
-    }
-    return m.ptr
-}
-
 func (m *ManagedSession) Id() int32 {
     if m == nil || m.ptr == nil {
         return 0
@@ -132,26 +112,6 @@ func newBorrowedSessionFactory(ptr *C.SessionFactoryHandle, root *bool) *Session
         return nil
     }
     return &SessionFactory{ptr: ptr, root: root}
-}
-
-func requireSessionFactoryHandle(s *SessionFactory) *C.SessionFactoryHandle {
-    if s == nil || s.ptr == nil {
-        panic("SessionFactory handle is required but nil")
-    }
-    if s.root != nil && *s.root {
-        panic("SessionFactory handle is closed")
-    }
-    return s.ptr
-}
-
-func optionalSessionFactoryHandle(s *SessionFactory) *C.SessionFactoryHandle {
-    if s == nil {
-        return nil
-    }
-    if s.root != nil && *s.root {
-        panic("SessionFactory handle is closed")
-    }
-    return s.ptr
 }
 
 func (s *SessionFactory) CreateSession(id int32) *ManagedSession {

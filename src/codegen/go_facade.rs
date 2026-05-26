@@ -20,9 +20,9 @@ use callbacks::{
 };
 use calls::{
     collect_free_function_dispatchers, collect_method_dispatchers,
-    covered_dispatcher_function_names, has_byte_array_params, has_pointer_params,
-    has_string_params, has_void_model_params, render_free_function,
-    render_free_function_dispatcher, render_method_dispatcher,
+    covered_dispatcher_function_names, has_byte_array_params, has_fixed_array_params,
+    has_model_handle_cast_params, has_pointer_params, has_string_params, has_void_model_params,
+    render_free_function, render_free_function_dispatcher, render_method_dispatcher,
 };
 use classes::{
     collect_facade_classes, collect_owned_opaque_model_value_handles, render_facade_class,
@@ -219,7 +219,9 @@ fn render_go_facade_file(input: GoFacadeFile<'_, '_>) -> String {
         has_string_params(function.params.iter())
             || has_pointer_params(function.params.iter())
             || has_byte_array_params(function.params.iter())
+            || has_fixed_array_params(function.params.iter())
             || has_void_model_params(function.params.iter())
+            || has_model_handle_cast_params(config, function.params.iter())
             || matches!(
                 function.returns.kind,
                 IrTypeKind::Pointer
@@ -232,12 +234,16 @@ fn render_go_facade_file(input: GoFacadeFile<'_, '_>) -> String {
             has_string_params(ctor.params.iter())
                 || has_pointer_params(ctor.params.iter())
                 || has_byte_array_params(ctor.params.iter())
+                || has_fixed_array_params(ctor.params.iter())
                 || has_void_model_params(ctor.params.iter())
+                || has_model_handle_cast_params(config, ctor.params.iter())
         }) || class.methods.iter().any(|function| {
             has_string_params(function.params.iter().skip(1))
                 || has_pointer_params(function.params.iter().skip(1))
                 || has_byte_array_params(function.params.iter().skip(1))
+                || has_fixed_array_params(function.params.iter().skip(1))
                 || has_void_model_params(function.params.iter().skip(1))
+                || has_model_handle_cast_params(config, function.params.iter().skip(1))
                 || matches!(
                     function.returns.kind,
                     IrTypeKind::Pointer | IrTypeKind::FixedByteArray
@@ -853,6 +859,46 @@ mod tests {
             go_param_type(&config, &function.params[1].ty),
             Some("*int32".to_string())
         );
+    }
+
+    #[test]
+    fn fixed_model_array_params_inline_element_handle_checks() {
+        let config = test_context_with_known_model();
+        let function = IrFunction {
+            name: "cgowrap_Api_SetThings".to_string(),
+            kind: IrFunctionKind::Function,
+            cpp_name: "SetThings".to_string(),
+            method_of: None,
+            owner_cpp_type: None,
+            is_const: None,
+            field_accessor: None,
+            operator: None,
+            returns: IrType {
+                kind: IrTypeKind::Void,
+                cpp_type: "void".to_string(),
+                c_type: "void".to_string(),
+                handle: None,
+            },
+            params: vec![IrParam {
+                name: "items".to_string(),
+                ty: IrType {
+                    kind: IrTypeKind::FixedModelArray,
+                    cpp_type: "ThingModel[2]".to_string(),
+                    c_type: "ThingModelHandle**".to_string(),
+                    handle: Some("ThingModelHandle".to_string()),
+                },
+            }],
+        };
+
+        let code = render_free_function(&config, &function, &BTreeSet::new(), &BTreeSet::new());
+        assert!(code.contains("if len(items) != 2 {"));
+        assert!(code.contains("for _i, _v := range items {"));
+        assert!(code.contains("if _v == nil || _v.ptr == nil {"));
+        assert!(code.contains("panic(\"ThingModel handle is required but nil\")"));
+        assert!(code.contains("if _v.root != nil && *_v.root {"));
+        assert!(code.contains("panic(\"ThingModel handle is closed\")"));
+        assert!(code.contains("cHandles0[_i] = _v.ptr"));
+        assert!(code.contains("C.cgowrap_Api_SetThings(cArg0)"));
     }
 
     #[test]
@@ -1886,7 +1932,8 @@ mod tests {
         assert!(helpers.contains("root := new(bool)"));
         assert!(helpers.contains("return &ThingModel{ptr: ptr, owned: true, root: root}"));
         assert!(helpers.contains("return &ThingModel{ptr: ptr, root: root}"));
-        assert!(helpers.contains("panic(\"ThingModel handle is closed\")"));
+        assert!(!helpers.contains(&format!("{}ThingModelHandle", "require")));
+        assert!(!helpers.contains(&format!("{}ThingModelHandle", "optional")));
         assert!(close.contains("if !t.owned {"));
         assert!(close.contains("*t.root = true"));
     }

@@ -51,26 +51,6 @@ func newBorrowedInventoryService(ptr *C.InventoryServiceHandle, root *bool) *Inv
     return &InventoryService{ptr: ptr, root: root}
 }
 
-func requireInventoryServiceHandle(i *InventoryService) *C.InventoryServiceHandle {
-    if i == nil || i.ptr == nil {
-        panic("InventoryService handle is required but nil")
-    }
-    if i.root != nil && *i.root {
-        panic("InventoryService handle is closed")
-    }
-    return i.ptr
-}
-
-func optionalInventoryServiceHandle(i *InventoryService) *C.InventoryServiceHandle {
-    if i == nil {
-        return nil
-    }
-    if i.root != nil && *i.root {
-        panic("InventoryService handle is closed")
-    }
-    return i.ptr
-}
-
 func (i *InventoryService) LoadItem(id int32, out *InventoryItem) bool {
     if i == nil || i.ptr == nil {
         return false
@@ -79,12 +59,13 @@ func (i *InventoryService) LoadItem(id int32, out *InventoryItem) bool {
         panic("InventoryService handle is closed")
     }
     var cArg1 *C.InventoryItemHandle
-    if out == nil {
-        panic("reference facade/model argument cannot be nil")
+    if out == nil || out.ptr == nil {
+        panic("InventoryItem handle is required but nil")
     }
-    if out != nil {
-        cArg1 = out.ptr
+    if out.root != nil && *out.root {
+        panic("InventoryItem handle is closed")
     }
+    cArg1 = out.ptr
     result := C.cgowrap_InventoryService_LoadItem(i.ptr, C.int32_t(id), cArg1)
     return bool(result)
 }
@@ -101,12 +82,13 @@ func (i *InventoryService) NextItem(cursor *int32, out *InventoryItem) bool {
     }
     cArg0 := C.int32_t(*cursor)
     var cArg1 *C.InventoryItemHandle
-    if out == nil {
-        panic("reference facade/model argument cannot be nil")
+    if out == nil || out.ptr == nil {
+        panic("InventoryItem handle is required but nil")
     }
-    if out != nil {
-        cArg1 = out.ptr
+    if out.root != nil && *out.root {
+        panic("InventoryItem handle is closed")
     }
+    cArg1 = out.ptr
     result := C.cgowrap_InventoryService_NextItem(i.ptr, &cArg0, cArg1)
     *cursor = int32(cArg0)
     return bool(result)

@@ -574,25 +574,7 @@ fn render_callback_call_prep(
                 prep.args.push(c_name);
             }
             IrTypeKind::FixedModelArray => {
-                let c_handle = param.ty.handle.as_deref().unwrap_or("");
-                let elem_cpp = ir_norm::fixed_array_elem_type(&param.ty.cpp_type).unwrap_or("");
-                let go_name = go_export_name(&flatten_qualified_cpp_name(elem_cpp));
-                let handles_name = format!("cHandles{index}");
-                let c_name = format!("cArg{index}");
-                prep.setup_lines
-                    .extend(render_fixed_length_guard(&param.name, &param.ty));
-                prep.setup_lines.push(format!(
-                    "{handles_name} := make([]*C.{c_handle}, len({}))",
-                    param.name
-                ));
-                prep.setup_lines.push(format!(
-                    "for _i, _v := range {} {{ {handles_name}[_i] = require{go_name}Handle(_v) }}",
-                    param.name
-                ));
-                prep.setup_lines.push(format!(
-                    "{c_name} := (**C.{c_handle})(unsafe.Pointer(&{handles_name}[0]))"
-                ));
-                prep.args.push(c_name);
+                render_fixed_model_array_arg(config, &mut prep, &param.ty, &param.name, index);
             }
             IrTypeKind::Reference => render_reference_arg(&mut prep, &param.ty, &param.name, index),
             IrTypeKind::Pointer => render_pointer_arg(&mut prep, &param.ty, &param.name, index),
@@ -664,25 +646,7 @@ pub(super) fn render_call_prep(
                 prep.args.push(c_name);
             }
             IrTypeKind::FixedModelArray => {
-                let c_handle = param.ty.handle.as_deref().unwrap_or("");
-                let elem_cpp = ir_norm::fixed_array_elem_type(&param.ty.cpp_type).unwrap_or("");
-                let go_name = go_export_name(&flatten_qualified_cpp_name(elem_cpp));
-                let handles_name = format!("cHandles{index}");
-                let c_name = format!("cArg{index}");
-                prep.setup_lines
-                    .extend(render_fixed_length_guard(&param.name, &param.ty));
-                prep.setup_lines.push(format!(
-                    "{handles_name} := make([]*C.{c_handle}, len({}))",
-                    param.name
-                ));
-                prep.setup_lines.push(format!(
-                    "for _i, _v := range {} {{ {handles_name}[_i] = require{go_name}Handle(_v) }}",
-                    param.name
-                ));
-                prep.setup_lines.push(format!(
-                    "{c_name} := (**C.{c_handle})(unsafe.Pointer(&{handles_name}[0]))"
-                ));
-                prep.args.push(c_name);
+                render_fixed_model_array_arg(config, &mut prep, &param.ty, &param.name, index);
             }
             IrTypeKind::Reference => render_reference_arg(&mut prep, &param.ty, &param.name, index),
             IrTypeKind::Pointer => render_pointer_arg(&mut prep, &param.ty, &param.name, index),
@@ -711,29 +675,6 @@ fn render_fixed_length_guard(name: &str, ty: &IrType) -> Vec<String> {
         format!("    panic(\"{name} requires {n} elements\")"),
         "}".to_string(),
     ]
-}
-
-pub(super) fn render_model_handle_arg(
-    config: &PipelineContext,
-    ty: &IrType,
-    name: &str,
-) -> Option<String> {
-    let projection = config.known_model_projection(&ty.cpp_type)?;
-    let handle_arg = if ty.kind == IrTypeKind::ModelPointer {
-        format!("optional{}Handle({})", projection.go_name, name)
-    } else {
-        format!("require{}Handle({})", projection.go_name, name)
-    };
-    // When the C function's expected handle type differs from the model projection's
-    // handle type (e.g., UCIDHandle* vs _UCIDHandle*), cast via unsafe.Pointer.
-    if let Some(expected_handle) = &ty.handle
-        && *expected_handle != projection.handle_name
-    {
-        return Some(format!(
-            "(*C.{expected_handle})(unsafe.Pointer({handle_arg}))"
-        ));
-    }
-    Some(handle_arg)
 }
 
 /// Returns an expression for `raw` cast to the projection's handle type,
@@ -802,6 +743,59 @@ fn render_reference_arg(prep: &mut RenderedCallPrep, ty: &IrType, name: &str, in
     prep.args.push(format!("&{c_name}"));
 }
 
+fn render_fixed_model_array_arg(
+    config: &PipelineContext,
+    prep: &mut RenderedCallPrep,
+    ty: &IrType,
+    name: &str,
+    index: usize,
+) {
+    let c_handle = ty.handle.as_deref().unwrap_or("");
+    let elem_cpp = ir_norm::fixed_array_elem_type(&ty.cpp_type).unwrap_or("");
+    let go_name = go_model_return_type(config, ty);
+    let handles_name = format!("cHandles{index}");
+    let c_name = format!("cArg{index}");
+    let elem_expr = render_fixed_model_array_elem_ptr_expr(config, elem_cpp, c_handle, "_v.ptr");
+    prep.setup_lines.extend(render_fixed_length_guard(name, ty));
+    prep.setup_lines.push(format!(
+        "{handles_name} := make([]*C.{c_handle}, len({name}))"
+    ));
+    prep.setup_lines
+        .push(format!("for _i, _v := range {name} {{"));
+    prep.setup_lines
+        .push("    if _v == nil || _v.ptr == nil {".to_string());
+    prep.setup_lines.push(format!(
+        "        panic(\"{go_name} handle is required but nil\")"
+    ));
+    prep.setup_lines.push("    }".to_string());
+    prep.setup_lines
+        .push("    if _v.root != nil && *_v.root {".to_string());
+    prep.setup_lines
+        .push(format!("        panic(\"{go_name} handle is closed\")"));
+    prep.setup_lines.push("    }".to_string());
+    prep.setup_lines
+        .push(format!("    {handles_name}[_i] = {elem_expr}"));
+    prep.setup_lines.push("}".to_string());
+    prep.setup_lines.push(format!(
+        "{c_name} := (**C.{c_handle})(unsafe.Pointer(&{handles_name}[0]))"
+    ));
+    prep.args.push(c_name);
+}
+
+fn render_fixed_model_array_elem_ptr_expr(
+    config: &PipelineContext,
+    elem_cpp: &str,
+    expected_handle: &str,
+    raw_expr: &str,
+) -> String {
+    if let Some(projection) = config.known_model_projection(elem_cpp)
+        && expected_handle != projection.handle_name
+    {
+        return format!("(*C.{expected_handle})(unsafe.Pointer({raw_expr}))");
+    }
+    raw_expr.to_string()
+}
+
 fn render_c_arg(ty: &IrType, name: &str) -> String {
     format!("{}({})", cgo_cast_type(ty), name)
 }
@@ -855,6 +849,50 @@ pub(super) fn has_byte_array_params<'a>(
     params.any(|param| param.ty.kind == IrTypeKind::FixedByteArray)
 }
 
+pub(super) fn has_fixed_array_params<'a>(
+    mut params: impl Iterator<Item = &'a ir_norm::IrParam>,
+) -> bool {
+    params.any(|param| {
+        matches!(
+            param.ty.kind,
+            IrTypeKind::FixedArray | IrTypeKind::FixedModelArray
+        )
+    })
+}
+
+pub(super) fn has_model_handle_cast_params<'a>(
+    config: &PipelineContext,
+    mut params: impl Iterator<Item = &'a ir_norm::IrParam>,
+) -> bool {
+    params.any(|param| model_param_needs_handle_cast(config, &param.ty))
+}
+
+fn model_param_needs_handle_cast(config: &PipelineContext, ty: &IrType) -> bool {
+    if matches!(
+        ty.kind,
+        IrTypeKind::ModelReference | IrTypeKind::ModelPointer | IrTypeKind::ModelValue
+    ) {
+        return config
+            .known_model_projection(&ty.cpp_type)
+            .zip(ty.handle.as_ref())
+            .is_some_and(|(projection, expected_handle)| {
+                *expected_handle != projection.handle_name
+            });
+    }
+    if ty.kind == IrTypeKind::FixedModelArray {
+        let Some(elem_cpp) = ir_norm::fixed_array_elem_type(&ty.cpp_type) else {
+            return false;
+        };
+        return config
+            .known_model_projection(elem_cpp)
+            .zip(ty.handle.as_ref())
+            .is_some_and(|(projection, expected_handle)| {
+                *expected_handle != projection.handle_name
+            });
+    }
+    false
+}
+
 pub(super) fn has_void_model_params<'a>(
     mut params: impl Iterator<Item = &'a ir_norm::IrParam>,
 ) -> bool {
@@ -873,10 +911,6 @@ fn render_model_arg(
     name: &str,
     index: usize,
 ) {
-    if let Some(handle_arg) = render_model_handle_arg(config, ty, name) {
-        prep.args.push(handle_arg);
-        return;
-    }
     // void model params: the Go type is unsafe.Pointer, which has no .ptr field.
     // Cast directly to *C.<handle> instead.
     if base_model_cpp_type(&ty.cpp_type) == "void" {
@@ -890,19 +924,53 @@ fn render_model_arg(
         prep.args.push(c_name);
         return;
     }
-    let handle = ty.handle.as_deref().unwrap_or("void");
     let c_name = format!("cArg{index}");
-    prep.setup_lines.push(format!("var {c_name} *C.{handle}"));
-    if ty.kind != IrTypeKind::ModelPointer {
-        prep.setup_lines.push(format!("if {name} == nil {{"));
-        prep.setup_lines
-            .push("    panic(\"reference facade/model argument cannot be nil\")".to_string());
-        prep.setup_lines.push("}".to_string());
-    }
-    prep.setup_lines.push(format!("if {name} != nil {{"));
-    prep.setup_lines.push(format!("    {c_name} = {name}.ptr"));
-    prep.setup_lines.push("}".to_string());
+    prep.setup_lines
+        .extend(render_model_handle_setup(config, ty, name, &c_name));
     prep.args.push(c_name);
+}
+
+pub(super) fn render_model_handle_setup(
+    config: &PipelineContext,
+    ty: &IrType,
+    name: &str,
+    c_name: &str,
+) -> Vec<String> {
+    let handle = ty.handle.as_deref().unwrap_or("void");
+    let go_name = go_model_return_type(config, ty);
+    let ptr_expr = render_model_ptr_expr(config, ty, &format!("{name}.ptr"));
+    let mut lines = vec![format!("var {c_name} *C.{handle}")];
+    if ty.kind == IrTypeKind::ModelPointer {
+        lines.push(format!("if {name} != nil {{"));
+        lines.push(format!("    if {name}.root != nil && *{name}.root {{"));
+        lines.push(format!("        panic(\"{go_name} handle is closed\")"));
+        lines.push("    }".to_string());
+        lines.push(format!("    {c_name} = {ptr_expr}"));
+        lines.push("}".to_string());
+    } else {
+        lines.push(format!("if {name} == nil || {name}.ptr == nil {{"));
+        lines.push(format!(
+            "    panic(\"{go_name} handle is required but nil\")"
+        ));
+        lines.push("}".to_string());
+        lines.push(format!("if {name}.root != nil && *{name}.root {{"));
+        lines.push(format!("    panic(\"{go_name} handle is closed\")"));
+        lines.push("}".to_string());
+        lines.push(format!("{c_name} = {ptr_expr}"));
+    }
+    lines
+}
+
+fn render_model_ptr_expr(config: &PipelineContext, ty: &IrType, raw_expr: &str) -> String {
+    // When the C function's expected handle type differs from the model projection's
+    // handle type (e.g., UCIDHandle* vs _UCIDHandle*), cast via unsafe.Pointer.
+    if let Some(projection) = config.known_model_projection(&ty.cpp_type)
+        && let Some(expected_handle) = &ty.handle
+        && *expected_handle != projection.handle_name
+    {
+        return format!("(*C.{expected_handle})(unsafe.Pointer({raw_expr}))");
+    }
+    raw_expr.to_string()
 }
 
 pub(super) fn has_callback_param<'a>(

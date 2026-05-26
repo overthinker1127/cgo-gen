@@ -51,26 +51,6 @@ func newBorrowedSelectedWidget(ptr *C.SelectedWidgetHandle, root *bool) *Selecte
     return &SelectedWidget{ptr: ptr, root: root}
 }
 
-func requireSelectedWidgetHandle(s *SelectedWidget) *C.SelectedWidgetHandle {
-    if s == nil || s.ptr == nil {
-        panic("SelectedWidget handle is required but nil")
-    }
-    if s.root != nil && *s.root {
-        panic("SelectedWidget handle is closed")
-    }
-    return s.ptr
-}
-
-func optionalSelectedWidgetHandle(s *SelectedWidget) *C.SelectedWidgetHandle {
-    if s == nil {
-        return nil
-    }
-    if s.root != nil && *s.root {
-        panic("SelectedWidget handle is closed")
-    }
-    return s.ptr
-}
-
 func (s *SelectedWidget) Value() int32 {
     if s == nil || s.ptr == nil {
         return 0

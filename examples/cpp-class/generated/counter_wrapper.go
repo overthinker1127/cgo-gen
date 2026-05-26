@@ -55,26 +55,6 @@ func newBorrowedMetricsCounter(ptr *C.metricsCounterHandle, root *bool) *Metrics
     return &MetricsCounter{ptr: ptr, root: root}
 }
 
-func requireMetricsCounterHandle(m *MetricsCounter) *C.metricsCounterHandle {
-    if m == nil || m.ptr == nil {
-        panic("MetricsCounter handle is required but nil")
-    }
-    if m.root != nil && *m.root {
-        panic("MetricsCounter handle is closed")
-    }
-    return m.ptr
-}
-
-func optionalMetricsCounterHandle(m *MetricsCounter) *C.metricsCounterHandle {
-    if m == nil {
-        return nil
-    }
-    if m.root != nil && *m.root {
-        panic("MetricsCounter handle is closed")
-    }
-    return m.ptr
-}
-
 func (m *MetricsCounter) Value() int32 {
     if m == nil || m.ptr == nil {
         return 0

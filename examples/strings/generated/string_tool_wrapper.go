@@ -63,26 +63,6 @@ func newBorrowedStringTool(ptr *C.StringToolHandle, root *bool) *StringTool {
     return &StringTool{ptr: ptr, root: root}
 }
 
-func requireStringToolHandle(s *StringTool) *C.StringToolHandle {
-    if s == nil || s.ptr == nil {
-        panic("StringTool handle is required but nil")
-    }
-    if s.root != nil && *s.root {
-        panic("StringTool handle is closed")
-    }
-    return s.ptr
-}
-
-func optionalStringToolHandle(s *StringTool) *C.StringToolHandle {
-    if s == nil {
-        return nil
-    }
-    if s.root != nil && *s.root {
-        panic("StringTool handle is closed")
-    }
-    return s.ptr
-}
-
 func (s *StringTool) Prefix() (string, error) {
     if s == nil || s.ptr == nil {
         return "", errors.New("facade receiver is nil")

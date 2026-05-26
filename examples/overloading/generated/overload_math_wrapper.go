@@ -61,26 +61,6 @@ func newBorrowedOverloadMath(ptr *C.OverloadMathHandle, root *bool) *OverloadMat
     return &OverloadMath{ptr: ptr, root: root}
 }
 
-func requireOverloadMathHandle(o *OverloadMath) *C.OverloadMathHandle {
-    if o == nil || o.ptr == nil {
-        panic("OverloadMath handle is required but nil")
-    }
-    if o.root != nil && *o.root {
-        panic("OverloadMath handle is closed")
-    }
-    return o.ptr
-}
-
-func optionalOverloadMathHandle(o *OverloadMath) *C.OverloadMathHandle {
-    if o == nil {
-        return nil
-    }
-    if o.root != nil && *o.root {
-        panic("OverloadMath handle is closed")
-    }
-    return o.ptr
-}
-
 func (o *OverloadMath) Add(args ...any) (float64, error) {
     if o == nil || o.ptr == nil {
         return 0, fmt.Errorf("OverloadMath receiver is nil")

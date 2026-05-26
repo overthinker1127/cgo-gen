@@ -59,26 +59,6 @@ func newBorrowedLibraryMathLibraryMath(ptr *C.library_mathLibraryMathHandle, roo
     return &LibraryMathLibraryMath{ptr: ptr, root: root}
 }
 
-func requireLibraryMathLibraryMathHandle(l *LibraryMathLibraryMath) *C.library_mathLibraryMathHandle {
-    if l == nil || l.ptr == nil {
-        panic("LibraryMathLibraryMath handle is required but nil")
-    }
-    if l.root != nil && *l.root {
-        panic("LibraryMathLibraryMath handle is closed")
-    }
-    return l.ptr
-}
-
-func optionalLibraryMathLibraryMathHandle(l *LibraryMathLibraryMath) *C.library_mathLibraryMathHandle {
-    if l == nil {
-        return nil
-    }
-    if l.root != nil && *l.root {
-        panic("LibraryMathLibraryMath handle is closed")
-    }
-    return l.ptr
-}
-
 func (l *LibraryMathLibraryMath) AddStatic(value int32) int32 {
     if l == nil || l.ptr == nil {
         return 0

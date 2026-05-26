@@ -53,26 +53,6 @@ func newBorrowedInventoryItem(ptr *C.InventoryItemHandle, root *bool) *Inventory
     return &InventoryItem{ptr: ptr, root: root}
 }
 
-func requireInventoryItemHandle(i *InventoryItem) *C.InventoryItemHandle {
-    if i == nil || i.ptr == nil {
-        panic("InventoryItem handle is required but nil")
-    }
-    if i.root != nil && *i.root {
-        panic("InventoryItem handle is closed")
-    }
-    return i.ptr
-}
-
-func optionalInventoryItemHandle(i *InventoryItem) *C.InventoryItemHandle {
-    if i == nil {
-        return nil
-    }
-    if i.root != nil && *i.root {
-        panic("InventoryItem handle is closed")
-    }
-    return i.ptr
-}
-
 func (i *InventoryItem) Id() int32 {
     if i == nil || i.ptr == nil {
         return 0

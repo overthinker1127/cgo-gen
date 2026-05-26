@@ -71,26 +71,6 @@ func newBorrowedDeviceController(ptr *C.DeviceControllerHandle, root *bool) *Dev
     return &DeviceController{ptr: ptr, root: root}
 }
 
-func requireDeviceControllerHandle(d *DeviceController) *C.DeviceControllerHandle {
-    if d == nil || d.ptr == nil {
-        panic("DeviceController handle is required but nil")
-    }
-    if d.root != nil && *d.root {
-        panic("DeviceController handle is closed")
-    }
-    return d.ptr
-}
-
-func optionalDeviceControllerHandle(d *DeviceController) *C.DeviceControllerHandle {
-    if d == nil {
-        return nil
-    }
-    if d.root != nil && *d.root {
-        panic("DeviceController handle is closed")
-    }
-    return d.ptr
-}
-
 func (d *DeviceController) State() DeviceState {
     if d == nil || d.ptr == nil {
         return 0

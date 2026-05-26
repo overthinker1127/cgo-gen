@@ -53,26 +53,6 @@ func newBorrowedSensorReading(ptr *C.SensorReadingHandle, root *bool) *SensorRea
     return &SensorReading{ptr: ptr, root: root}
 }
 
-func requireSensorReadingHandle(s *SensorReading) *C.SensorReadingHandle {
-    if s == nil || s.ptr == nil {
-        panic("SensorReading handle is required but nil")
-    }
-    if s.root != nil && *s.root {
-        panic("SensorReading handle is closed")
-    }
-    return s.ptr
-}
-
-func optionalSensorReadingHandle(s *SensorReading) *C.SensorReadingHandle {
-    if s == nil {
-        return nil
-    }
-    if s.root != nil && *s.root {
-        panic("SensorReading handle is closed")
-    }
-    return s.ptr
-}
-
 func (s *SensorReading) GetSampleId() int32 {
     if s == nil || s.ptr == nil {
         return 0

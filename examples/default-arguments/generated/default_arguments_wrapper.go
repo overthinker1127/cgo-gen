@@ -84,26 +84,6 @@ func newBorrowedDefaultCounter(ptr *C.DefaultCounterHandle, root *bool) *Default
     return &DefaultCounter{ptr: ptr, root: root}
 }
 
-func requireDefaultCounterHandle(d *DefaultCounter) *C.DefaultCounterHandle {
-    if d == nil || d.ptr == nil {
-        panic("DefaultCounter handle is required but nil")
-    }
-    if d.root != nil && *d.root {
-        panic("DefaultCounter handle is closed")
-    }
-    return d.ptr
-}
-
-func optionalDefaultCounterHandle(d *DefaultCounter) *C.DefaultCounterHandle {
-    if d == nil {
-        return nil
-    }
-    if d.root != nil && *d.root {
-        panic("DefaultCounter handle is closed")
-    }
-    return d.ptr
-}
-
 func (d *DefaultCounter) Value() int32 {
     if d == nil || d.ptr == nil {
         return 0
