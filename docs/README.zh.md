@@ -237,11 +237,12 @@ cgo-gen generate --config path/to/config.yaml --go-module example.com/acme/foo
 - Go 中的 primitive pointer/reference write-back
 - 支持的 API 使用的 named callback typedefs
 - `struct timeval*` 和 `struct timeval&`
+- supported signature 的 member/free operators，会生成命名的 `Oper...` wrapper
 - 支持 object paths 的 handle-backed Go wrappers
 
 ## Not Supported Or Intentionally Limited
 
-- `operator+` 和 `operator==` 等 operators
+- `operator new`、`operator delete` 等 allocator operators 不会作为 wrapper 目标暴露
 - `void (*cb)(int)` 这样的 raw inline function pointer parameters
 - templates 和 STL-heavy APIs
 - anonymous classes

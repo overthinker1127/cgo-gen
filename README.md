@@ -247,11 +247,12 @@ For large libraries, either put the small header surface you want to wrap in an 
 - recognized model by-value parameters and returns through handle-backed wrappers
 - named callback typedefs used by supported APIs
 - `struct timeval*` and `struct timeval&`
+- member and free operators with supported signatures, generated as named `Oper...` wrappers
 - handle-backed Go wrappers for supported object paths
 
 ## Not Supported Or Intentionally Limited
 
-- operators such as `operator+` and `operator==`
+- allocator operators such as `operator new` and `operator delete` are not exposed as wrapper targets
 - raw inline function pointer parameters such as `void (*cb)(int)`
 - templates and STL-heavy APIs
 - anonymous classes

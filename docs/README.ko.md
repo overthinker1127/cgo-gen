@@ -239,11 +239,12 @@ cgo-gen generate --config path/to/config.yaml --go-module example.com/acme/foo
 - Go에서의 primitive pointer/reference write-back
 - 지원되는 API에서 사용되는 named callback typedef
 - `struct timeval*`, `struct timeval&`
+- 지원되는 signature의 member/free operator. 이름 있는 `Oper...` wrapper로 생성됩니다.
 - 지원되는 object 경로에 대한 handle-backed Go wrapper
 
 ## 비지원 또는 의도적 제한
 
-- `operator+`, `operator==` 같은 operator
+- `operator new`, `operator delete` 같은 allocator operator는 wrapper 대상으로 노출하지 않습니다.
 - `void (*cb)(int)` 같은 raw inline function pointer parameter
 - template와 STL-heavy API
 - anonymous class
