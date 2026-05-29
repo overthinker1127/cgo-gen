@@ -195,7 +195,7 @@ cgo-gen generate --config path/to/config.yaml --go-module example.com/acme/foo
 当前行为：
 
 - `build_flags.go` 总是输出 `#cgo CFLAGS: -I${SRCDIR}`
-- `#cgo CXXFLAGS` 会导出每个 `input.dirs` entry 和 raw `input.clang_args` 的安全子集
+- `#cgo CXXFLAGS` 会导出 raw `input.clang_args` 的安全子集
 - 导出的 `CXXFLAGS` 只允许 `-I`, `-D`, `-std=...`
 - 设置 `input.ldflags` 时，`build_flags.go` 也会输出 `#cgo LDFLAGS`
 

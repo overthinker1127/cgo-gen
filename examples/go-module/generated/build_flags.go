@@ -2,6 +2,6 @@ package generated
 
 /*
 #cgo CFLAGS: -I${SRCDIR}
-#cgo CXXFLAGS: -I${SRCDIR} -I${SRCDIR}/../input
+#cgo CXXFLAGS: -I${SRCDIR}
 */
 import "C"

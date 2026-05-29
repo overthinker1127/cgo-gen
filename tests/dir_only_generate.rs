@@ -317,8 +317,9 @@ output:
     assert!(a_header.contains("BHandle* cgowrap_A_Child(AHandle* self);"));
 
     let build_flags = fs::read_to_string(output_dir.join("build_flags.go")).unwrap();
-    assert!(build_flags.contains("-I${SRCDIR}/../A"));
-    assert!(build_flags.contains("-I${SRCDIR}/../B"));
+    assert!(build_flags.contains("#cgo CXXFLAGS: -I${SRCDIR}"));
+    assert!(!build_flags.contains("-I${SRCDIR}/../A"));
+    assert!(!build_flags.contains("-I${SRCDIR}/../B"));
 
     compile_generated_cpp(&root, "a_wrapper.cpp");
     compile_generated_cpp(&root, "b_wrapper.cpp");

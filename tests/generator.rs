@@ -721,11 +721,12 @@ output:
     assert!(build_flags.contains("package out"));
     assert!(build_flags.contains("#cgo CFLAGS: -I${SRCDIR}"));
     assert!(build_flags.contains(&format!(
-        "#cgo CXXFLAGS: -I${{SRCDIR}} -I${{SRCDIR}}/../include -I${{SRCDIR}}/../relative/inline -I ${{SRCDIR}}/../relative/split -I{} -I {} -I{} -D SPLIT=1 -DMODE=1 -std=c++20",
+        "#cgo CXXFLAGS: -I${{SRCDIR}} -I${{SRCDIR}}/../relative/inline -I ${{SRCDIR}}/../relative/split -I{} -I {} -I{} -D SPLIT=1 -DMODE=1 -std=c++20",
         absolute_inline.display(),
         absolute_split.display(),
         root.join("sdk/include").display()
     )));
+    assert!(!build_flags.contains("-I${SRCDIR}/../include"));
     assert!(!build_flags.contains("-isystem"));
     assert!(!build_flags.contains("system/include"));
     assert!(!build_flags.contains("inline/include"));

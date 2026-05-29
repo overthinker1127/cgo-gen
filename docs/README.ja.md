@@ -195,7 +195,7 @@ cgo-gen generate --config path/to/config.yaml --go-module example.com/acme/foo
 現在の動作:
 
 - `build_flags.go` は常に `#cgo CFLAGS: -I${SRCDIR}` を出力します
-- `#cgo CXXFLAGS` は各 `input.dirs` entry と raw `input.clang_args` の安全な subset から export されます
+- `#cgo CXXFLAGS` は raw `input.clang_args` の安全な subset から export されます
 - export される `CXXFLAGS` は `-I`, `-D`, `-std=...` だけを許可します
 - `input.ldflags` が設定されている場合、`build_flags.go` は `#cgo LDFLAGS` も出力します
 

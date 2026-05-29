@@ -164,7 +164,7 @@ Key behaviors:
 - relative paths are resolved from the config file location
 - unknown keys are rejected at load time
 - each `input.dirs` entry is scanned directly; nested directories are ignored unless listed explicitly
-- every `input.dirs` entry is treated as an owned header root and added to libclang/cgo include flags
+- every `input.dirs` entry is treated as an owned header root and added to libclang include flags
 - `input.headers` is an exact file list and cannot be combined with `input.dirs`
 - headers included by listed files are parsed as dependencies, but wrappers are generated only for files listed in `input.headers`
 - generated `.go`, `.h`, `.cpp`, and optional `.ir.yaml` files are written together under `output.dir`
@@ -205,7 +205,7 @@ When enabled, `generate` also writes:
 Current behavior:
 
 - `build_flags.go` always emits `#cgo CFLAGS: -I${SRCDIR}`
-- `#cgo CXXFLAGS` include every `input.dirs` entry plus safe exports from raw `input.clang_args`
+- `#cgo CXXFLAGS` are exported from the safe subset of raw `input.clang_args`
 - exported `CXXFLAGS` allow only `-I`, `-D`, and `-std=...`
 - when `input.ldflags` is set, `build_flags.go` also emits `#cgo LDFLAGS`
 
