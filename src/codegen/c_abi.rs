@@ -520,6 +520,12 @@ fn is_direct_library_file_ldflag(flag: &str) -> bool {
 
 fn exported_cxxflags(ctx: &PipelineContext) -> Vec<String> {
     let mut flags = vec!["-I${SRCDIR}".to_string()];
+    for dir in &ctx.input.dirs {
+        let flag = format!("-I{}", exported_owned_dir_path(dir, &ctx.output_dir()));
+        if !flags.contains(&flag) {
+            flags.push(flag);
+        }
+    }
     let mut index = 0;
     let raw_args = ctx.raw_clang_args();
     let resolved_args = &ctx.input.clang_args;
@@ -554,10 +560,13 @@ fn exported_cxxflags(ctx: &PipelineContext) -> Vec<String> {
 
         if arg.starts_with("-I") && arg.len() > 2 {
             let raw_value = raw_arg.strip_prefix("-I").unwrap_or(&arg[2..]);
-            flags.push(format!(
+            let flag = format!(
                 "-I{}",
                 exported_include_path(raw_value, &arg[2..], &ctx.output_dir())
-            ));
+            );
+            if !flags.contains(&flag) {
+                flags.push(flag);
+            }
         } else if (arg.starts_with("-D") && arg.len() > 2) || arg.starts_with("-std=") {
             flags.push(arg.clone());
         }
@@ -566,6 +575,20 @@ fn exported_cxxflags(ctx: &PipelineContext) -> Vec<String> {
     }
 
     flags
+}
+
+fn exported_owned_dir_path(dir: &Path, output_dir: &Path) -> String {
+    let output_dir = absolute_output_dir(output_dir);
+    relative_path_from(dir, &output_dir)
+        .and_then(|relative| path_to_cgo_string(&relative))
+        .map(|relative| {
+            if relative.is_empty() {
+                "${SRCDIR}".to_string()
+            } else {
+                format!("${{SRCDIR}}/{relative}")
+            }
+        })
+        .unwrap_or_else(|| dir.display().to_string())
 }
 
 fn exported_include_path(raw_value: &str, resolved_value: &str, output_dir: &Path) -> String {

@@ -1,0 +1,106 @@
+version: 1
+module: cgowrap
+source_headers:
+- ../A/A.h
+records:
+- cpp_type: A
+  handle_name: AHandle
+  kind: class
+opaque_types:
+- name: AHandle
+  cpp_type: A
+- name: BHandle
+  cpp_type: B
+functions:
+- name: cgowrap_A_new
+  kind: constructor
+  cpp_name: A
+  method_of: AHandle
+  owner_cpp_type: A
+  returns:
+    kind: opaque
+    cpp_type: A
+    c_type: AHandle*
+    handle: AHandle
+  params: []
+- name: cgowrap_A_delete
+  kind: destructor
+  cpp_name: A
+  method_of: AHandle
+  owner_cpp_type: A
+  returns:
+    kind: void
+    cpp_type: void
+    c_type: void
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: A*
+      c_type: AHandle*
+      handle: AHandle
+- name: cgowrap_A_Child
+  kind: method
+  cpp_name: A::Child
+  method_of: AHandle
+  owner_cpp_type: A
+  is_const: false
+  returns:
+    kind: model_pointer
+    cpp_type: B*
+    c_type: BHandle*
+    handle: BHandle
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: A*
+      c_type: AHandle*
+      handle: AHandle
+- name: cgowrap_A_ChildValue
+  kind: method
+  cpp_name: A::ChildValue
+  method_of: AHandle
+  owner_cpp_type: A
+  is_const: true
+  returns:
+    kind: primitive
+    cpp_type: int
+    c_type: int
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: const A*
+      c_type: const AHandle*
+      handle: AHandle
+- name: cgowrap_A_SetChildValue
+  kind: method
+  cpp_name: A::SetChildValue
+  method_of: AHandle
+  owner_cpp_type: A
+  is_const: false
+  returns:
+    kind: void
+    cpp_type: void
+    c_type: void
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: A*
+      c_type: AHandle*
+      handle: AHandle
+  - name: value
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+enums: []
+constants: []
+callbacks: []
+support:
+  parser_backend: libclang
+  notes:
+  - Parsed with clang AST and normalized into a conservative C ABI IR.
+  - v1 intentionally rejects unsupported C++ constructs during type normalization.

@@ -48,7 +48,8 @@ fn recognizes_known_model_out_params_in_facade_wrappers() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -116,7 +117,8 @@ fn skips_mismatched_getter_setter_fields_without_failing_generation() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,

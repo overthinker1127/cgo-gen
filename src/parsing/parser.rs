@@ -94,11 +94,10 @@ pub fn parse(ctx: &PipelineContext) -> Result<ParsedApi> {
             &mut api,
         )?;
 
-        if let Some(dir) = &ctx.input.dir {
+        if !ctx.input.dirs.is_empty() {
             let all_headers = ctx.config.discovered_headers()?;
             let supplemental_headers = all_headers
                 .into_iter()
-                .filter(|path| path.starts_with(dir))
                 .filter(|path| {
                     !discovered_headers.iter().any(|seen| {
                         Path::new(seen)
@@ -323,7 +322,7 @@ impl From<&CppOperator> for OperatorDedupeKey {
 #[derive(Debug, Clone)]
 struct ParseFilter {
     main_file_only: bool,
-    owned_dir: Option<PathBuf>,
+    owned_dirs: Vec<PathBuf>,
     owned_headers: BTreeSet<PathBuf>,
     target_header: Option<PathBuf>,
 }
@@ -332,7 +331,7 @@ impl ParseFilter {
     fn from_context(ctx: &PipelineContext) -> Self {
         Self {
             main_file_only: false,
-            owned_dir: ctx.input.dir.clone(),
+            owned_dirs: ctx.input.dirs.clone(),
             owned_headers: ctx
                 .input
                 .headers
@@ -954,10 +953,7 @@ fn should_collect_cursor(cursor: CXCursor, filter: &ParseFilter) -> bool {
             .iter()
             .any(|header| same_path(&path, header));
     }
-    let Some(dir) = &filter.owned_dir else {
-        return false;
-    };
-    path_is_within(&path, dir)
+    path_parent_is_owned_dir(&path, &filter.owned_dirs)
 }
 
 fn matches_target_path(path: &Path, target_header: Option<&PathBuf>) -> bool {
@@ -1072,10 +1068,11 @@ fn cursor_file_path(cursor: CXCursor) -> Option<PathBuf> {
     }
 }
 
-fn path_is_within(path: &Path, dir: &Path) -> bool {
-    let path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-    let dir = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
-    path.starts_with(dir)
+fn path_parent_is_owned_dir(path: &Path, dirs: &[PathBuf]) -> bool {
+    let Some(parent) = path.parent() else {
+        return false;
+    };
+    dirs.iter().any(|dir| same_path(parent, dir))
 }
 
 fn is_header_path(path: &Path) -> bool {

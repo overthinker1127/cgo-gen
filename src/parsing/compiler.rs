@@ -21,6 +21,7 @@ pub fn collect_clang_args(config: &Config, parse_entry: &Path) -> Result<Vec<Str
         args.push("-std=c++17".to_string());
     }
 
+    add_input_dir_includes(&mut args, &config.input.dirs);
     add_parse_entry_parent_include(&mut args, parse_entry);
     add_platform_fallback_sysroot(&mut args);
     add_platform_fallback_includes(&mut args);
@@ -37,17 +38,24 @@ pub fn collect_translation_units(config: &Config) -> Result<Vec<PathBuf>> {
         return Ok(config.input.headers.clone());
     }
 
-    let Some(dir) = &config.input.dir else {
-        return Ok(Vec::new());
-    };
-    scan_dir_translation_units(dir)
+    scan_dir_translation_units(&config.input.dirs)
 }
 
 fn add_header_parent_include(args: &mut Vec<String>, header: &Path) {
     let Some(parent) = header.parent() else {
         return;
     };
-    let include = normalize_clang_path(parent);
+    add_include_if_missing(args, parent);
+}
+
+fn add_input_dir_includes(args: &mut Vec<String>, dirs: &[PathBuf]) {
+    for dir in dirs {
+        add_include_if_missing(args, dir);
+    }
+}
+
+fn add_include_if_missing(args: &mut Vec<String>, dir: &Path) {
+    let include = normalize_clang_path(dir);
     let mut has_parent_include = false;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
@@ -333,10 +341,12 @@ fn latest_versioned_include_dir(root: &Path) -> Option<PathBuf> {
         .max()
 }
 
-fn scan_dir_translation_units(dir: &Path) -> Result<Vec<PathBuf>> {
+fn scan_dir_translation_units(dirs: &[PathBuf]) -> Result<Vec<PathBuf>> {
     let mut source_units = BTreeSet::new();
     let mut header_units = BTreeSet::new();
-    scan_dir_translation_units_recursive(dir, &mut source_units, &mut header_units)?;
+    for dir in dirs {
+        scan_dir_translation_units_direct(dir, &mut source_units, &mut header_units)?;
+    }
 
     if !source_units.is_empty() {
         Ok(source_units.into_iter().collect())
@@ -354,7 +364,7 @@ fn normalize_clang_path(path: &Path) -> String {
     }
 }
 
-fn scan_dir_translation_units_recursive(
+fn scan_dir_translation_units_direct(
     dir: &Path,
     source_units: &mut BTreeSet<PathBuf>,
     header_units: &mut BTreeSet<PathBuf>,
@@ -364,10 +374,6 @@ fn scan_dir_translation_units_recursive(
 
     for entry in entries {
         let path = entry?.path();
-        if path.is_dir() {
-            scan_dir_translation_units_recursive(&path, source_units, header_units)?;
-            continue;
-        }
         if !path.is_file() {
             continue;
         }

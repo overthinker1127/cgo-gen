@@ -67,7 +67,8 @@ fn write_directory_example_config() -> PathBuf {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: pkg/sdk
 "#,
@@ -92,7 +93,8 @@ fn write_model_record_dir_config() -> PathBuf {
             r#"
 version: 1
 input:
-  dir: '{fixture_dir}'
+  dirs:
+    - '{fixture_dir}'
   clang_args:
     - -std=c++11
     - -x
@@ -122,7 +124,8 @@ fn loads_yaml_config() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -132,8 +135,8 @@ output:
     let config = Config::load(&config_path).unwrap();
     assert_eq!(config.version, Some(1));
     assert_eq!(
-        config.input.dir.as_ref(),
-        Some(&dir.join("include").canonicalize().unwrap())
+        config.input.dirs,
+        vec![dir.join("include").canonicalize().unwrap()]
     );
     assert_eq!(config.output.go_version, "1.26");
     assert_eq!(config.output.header, "foo_wrapper.h");
@@ -151,7 +154,8 @@ fn loads_output_go_version_override() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
   go_version: "1.24"
@@ -177,7 +181,8 @@ fn loads_dir_only_input_config() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -186,10 +191,107 @@ output:
 
     let config = Config::load(&config_path).unwrap();
     let expected_dir = dir.join("include").canonicalize().unwrap();
-    assert_eq!(config.input.dir.as_ref(), Some(&expected_dir));
+    assert_eq!(config.input.dirs, vec![expected_dir]);
     assert_eq!(config.output.header, "model_wrapper.h");
     assert_eq!(config.output.source, "model_wrapper.cpp");
     assert_eq!(config.output.ir, "model_wrapper.ir.yaml");
+}
+
+#[test]
+fn rejects_legacy_input_dir_key() {
+    let dir = temp_test_dir("legacy_input_dir");
+    fs::create_dir_all(dir.join("include")).unwrap();
+    fs::write(dir.join("include/model.hpp"), "class ModelThing {};").unwrap();
+
+    let config_path = dir.join("cppgo-wrap.yaml");
+    fs::write(
+        &config_path,
+        r#"
+version: 1
+input:
+  dir: include
+output:
+  dir: gen
+"#,
+    )
+    .unwrap();
+
+    let error = Config::load(&config_path).unwrap_err().to_string();
+    assert!(error.contains("failed to parse YAML config"));
+    assert!(error.contains("dir"));
+}
+
+#[test]
+fn rejects_missing_input_dir_entry() {
+    let dir = temp_test_dir("missing_input_dir");
+
+    let config_path = dir.join("cppgo-wrap.yaml");
+    fs::write(
+        &config_path,
+        r#"
+version: 1
+input:
+  dirs:
+    - missing
+output:
+  dir: gen
+"#,
+    )
+    .unwrap();
+
+    let error = format!("{:#}", Config::load(&config_path).unwrap_err());
+    assert!(error.contains("input.dirs entry not found"));
+}
+
+#[test]
+fn rejects_non_directory_input_dir_entry() {
+    let dir = temp_test_dir("non_directory_input_dir");
+    fs::write(dir.join("not-a-dir.hpp"), "class ModelThing {};").unwrap();
+
+    let config_path = dir.join("cppgo-wrap.yaml");
+    fs::write(
+        &config_path,
+        r#"
+version: 1
+input:
+  dirs:
+    - not-a-dir.hpp
+output:
+  dir: gen
+"#,
+    )
+    .unwrap();
+
+    let error = format!("{:#}", Config::load(&config_path).unwrap_err());
+    assert!(error.contains("input.dirs entry must be a directory"));
+}
+
+#[test]
+fn rejects_duplicate_input_dirs_after_canonicalization() {
+    let dir = temp_test_dir("duplicate_input_dirs");
+    fs::create_dir_all(dir.join("include")).unwrap();
+    fs::write(dir.join("include/model.hpp"), "class ModelThing {};").unwrap();
+
+    let config_path = dir.join("cppgo-wrap.yaml");
+    fs::write(
+        &config_path,
+        r#"
+version: 1
+input:
+  dirs:
+    - include
+    - include/../include
+output:
+  dir: gen
+  header: custom_wrapper.h
+  source: custom_wrapper.cpp
+  ir: custom_wrapper.ir.yaml
+"#,
+    )
+    .unwrap();
+
+    let error = format!("{:#}", Config::load(&config_path).unwrap_err());
+    assert!(error.contains("input.dirs entry is duplicated"));
 }
 
 #[test]
@@ -204,7 +306,8 @@ fn loads_input_owner_overrides() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
   owner:
     - DBHandlerFactory::CreateHandler
     - WidgetFactory::Create
@@ -241,7 +344,8 @@ fn rejects_removed_allow_diagnostics_key() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
   allow_diagnostics: true
 output:
   dir: gen
@@ -271,7 +375,8 @@ fn rejects_removed_input_include_dirs_key() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
   include_dirs:
     - include
 output:
@@ -308,7 +413,7 @@ output:
     .unwrap();
 
     let error = format!("{:#}", Config::load(&config_path).unwrap_err());
-    assert!(error.contains("config.input.dir or config.input.headers must be set"));
+    assert!(error.contains("config.input.dirs or config.input.headers must be set"));
 }
 
 #[test]
@@ -334,7 +439,7 @@ output:
     .unwrap();
 
     let config = Config::load(&config_path).unwrap();
-    assert_eq!(config.input.dir, None);
+    assert!(config.input.dirs.is_empty());
     assert_eq!(
         config.input.headers,
         vec![
@@ -383,7 +488,8 @@ fn rejects_config_with_dir_and_headers() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
   headers:
     - include/foo.hpp
 output:
@@ -393,7 +499,7 @@ output:
     .unwrap();
 
     let error = format!("{:#}", Config::load(&config_path).unwrap_err());
-    assert!(error.contains("config.input.dir and config.input.headers are mutually exclusive"));
+    assert!(error.contains("config.input.dirs and config.input.headers are mutually exclusive"));
 }
 
 #[test]
@@ -488,7 +594,8 @@ fn rejects_removed_reserved_config_keys() {
 version: 1
 project_root: .
 input:
-  dir: include
+  dirs:
+    - include
 files:
   model:
 policies:
@@ -517,7 +624,8 @@ fn derives_output_filenames_from_header_stem() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -549,7 +657,8 @@ fn scoped_header_from_dir_only_config_switches_back_to_header_mode() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -557,9 +666,9 @@ output:
     .unwrap();
 
     let config = Config::load(&config_path).unwrap();
-    let scoped = config.scoped_to_header(&config.input.dir.as_ref().unwrap().join("model.hpp"));
+    let scoped = config.scoped_to_header(&config.input.dirs[0].join("model.hpp"));
 
-    assert_eq!(scoped.input.dir, config.input.dir);
+    assert_eq!(scoped.input.dirs, config.input.dirs);
     assert_eq!(scoped.output.header, "model_wrapper.h");
     assert_eq!(scoped.output.source, "model_wrapper.cpp");
     assert_eq!(scoped.output.ir, "model_wrapper.ir.yaml");
@@ -571,15 +680,15 @@ fn loads_directory_wrapper_example_config() {
     let config = Config::load(&config_path).unwrap();
 
     assert_eq!(
-        config.input.dir.as_ref(),
-        Some(
-            &config_path
+        config.input.dirs,
+        vec![
+            config_path
                 .parent()
                 .unwrap()
                 .join("include")
                 .canonicalize()
                 .unwrap()
-        )
+        ]
     );
     assert!(config.output.dir.ends_with(Path::new("pkg").join("sdk")));
 }
@@ -589,7 +698,7 @@ fn directory_wrapper_example_scopes_per_header_output_names() {
     let config_path = write_directory_example_config();
     let config = Config::load(&config_path).unwrap();
 
-    let dir = config.input.dir.as_ref().unwrap();
+    let dir = &config.input.dirs[0];
     let profile = config.scoped_to_header(&dir.join("UserProfile.hpp"));
     let admin = config.scoped_to_header(&dir.join("AdminUser.hpp"));
 
@@ -623,7 +732,8 @@ fn resolves_relative_clang_include_args_from_config_dir() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
   clang_args:
     - -Ideps/inc
     - -isystem
@@ -684,7 +794,8 @@ fn expands_env_tokens_in_clang_args() {
             r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
   clang_args:
     - ${plain_flag}
     - -I${{{inline_include}}}
@@ -735,7 +846,8 @@ fn rejects_missing_env_tokens_in_clang_args() {
             r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
   clang_args:
     - -I${missing}
 output:
@@ -757,8 +869,8 @@ fn loads_gen_model_config() {
     assert!(
         config
             .input
-            .dir
-            .as_ref()
+            .dirs
+            .first()
             .is_some_and(|path| path.is_absolute())
     );
     assert!(
@@ -793,7 +905,8 @@ fn resolves_symlinked_external_project_paths_from_config_dir() {
         r#"
 version: 1
 input:
-  dir: third_party/external-sdk/include
+  dirs:
+    - third_party/external-sdk/include
   clang_args:
     - -Ithird_party/external-sdk/include
 output:
@@ -805,7 +918,7 @@ output:
     let config = Config::load(&config_path).unwrap();
     let expected_include = external.join("include").canonicalize().unwrap();
 
-    assert_eq!(config.input.dir.as_ref(), Some(&expected_include));
+    assert_eq!(config.input.dirs, vec![expected_include.clone()]);
     assert_eq!(
         config.input.clang_args,
         vec![format!("-I{}", normalize_expected_path(&expected_include))]
@@ -830,7 +943,8 @@ fn preserves_raw_clang_args_without_injection() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
   clang_args:
     - -Imanual/inc
     - -DMODE=1
@@ -866,7 +980,8 @@ fn resolves_relative_ldflags_from_config_dir() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
   ldflags:
     - -Ldeps/lib
     - -lfoo
@@ -906,7 +1021,8 @@ fn resolves_missing_relative_library_ldflags_from_canonical_config_dir() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
   ldflags:
     - lib/libmissing.a
 output:
@@ -946,7 +1062,8 @@ fn expands_env_tokens_in_ldflags() {
             r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
   ldflags:
     - -L${{{inline_lib}}}
     - ${plain_lib}
@@ -991,7 +1108,8 @@ fn emits_resolved_ldflags_into_build_flags_go() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
   ldflags:
     - -Ldeps/lib
     - -lfoo

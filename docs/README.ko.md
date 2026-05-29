@@ -121,9 +121,9 @@ cgo-gen ir --config path/to/config.yaml --format yaml
 version: 1
 
 input:
-  dir: path/to/include
+  dirs:
+    - path/to/include
   clang_args:
-    - -Ipath/to/include
     - -std=c++17
   owner:
     - WidgetFactory::Create
@@ -135,7 +135,7 @@ output:
   dir: gen
 ```
 
-정확한 엔트리 헤더 목록만 감싸고 싶다면 `input.dir` 대신 `input.headers`를 사용합니다.
+정확한 엔트리 헤더 목록만 감싸고 싶다면 `input.dirs` 대신 `input.headers`를 사용합니다.
 
 ```yaml
 version: 1
@@ -155,8 +155,8 @@ output:
 
 - 상대 경로는 config 파일 위치를 기준으로 해석됩니다.
 - 지원하지 않는 키는 로드 시점에 오류로 처리됩니다.
-- `input.dir`는 재귀적으로 스캔됩니다.
-- `input.headers`는 정확한 파일 목록이며 `input.dir`와 함께 사용할 수 없습니다.
+- 각 `input.dirs` 항목은 직접 포함된 파일만 스캔합니다. nested directory는 명시적으로 나열해야 합니다.
+- `input.headers`는 정확한 파일 목록이며 `input.dirs`와 함께 사용할 수 없습니다.
 - 목록에 있는 헤더가 include하는 dependency header는 파싱에는 쓰이지만, wrapper는 `input.headers`에 명시된 파일에 대해서만 생성됩니다.
 - 생성되는 `.go`, `.h`, `.cpp`, 선택적 `.ir.yaml` 파일은 모두 `output.dir` 아래에 함께 놓입니다.
 - `output.go_version`은 생성되는 `go.mod`의 Go 버전을 제어하며 기본값은 `1.26`입니다.
@@ -197,7 +197,7 @@ cgo-gen generate --config path/to/config.yaml --go-module example.com/acme/foo
 현재 동작은 다음과 같습니다.
 
 - `build_flags.go`는 항상 `#cgo CFLAGS: -I${SRCDIR}`를 포함합니다.
-- `#cgo CXXFLAGS`는 raw `input.clang_args`에서만 추출합니다.
+- `#cgo CXXFLAGS`는 각 `input.dirs` 항목과 raw `input.clang_args`의 안전한 subset에서 추출합니다.
 - export되는 `CXXFLAGS`는 `-I`, `-D`, `-std=...`만 허용합니다.
 - `input.ldflags`가 있으면 `build_flags.go`에 `#cgo LDFLAGS`도 생성합니다.
 
@@ -207,8 +207,8 @@ cgo-gen generate --config path/to/config.yaml --go-module example.com/acme/foo
 
 처음에는 많은 옵션을 알 필요가 없습니다. 현재 지원하는 핵심 키는 아래 정도입니다.
 
-- `input.dir`: header discovery와 translation-unit discovery에 쓰이는 재귀 입력 루트
-- `input.headers`: config 파일 위치 기준으로 해석되는 정확한 엔트리 헤더 목록; `input.dir`와 상호 배타적
+- `input.dirs`: header discovery와 translation-unit discovery에 쓰이는 direct-only input directories; nested directory는 명시적으로 나열해야 합니다
+- `input.headers`: config 파일 위치 기준으로 해석되는 정확한 엔트리 헤더 목록; `input.dirs`와 상호 배타적
 - `input.clang_args`: `-I`, `-isystem`, `-D`, `-std=...` 같은 추가 libclang 인자
 - `input.owner`: pointer return을 owned Go wrapper로 강제할 qualified callable name 목록
 - `input.ldflags`: 생성되는 `build_flags.go`에 전달할 링커 플래그
@@ -219,12 +219,12 @@ cgo-gen generate --config path/to/config.yaml --go-module example.com/acme/foo
 
 - multi-header generation에서는 `output.header`, `output.source`, `output.ir`를 기본값으로 두는 편이 안전합니다.
 - 생성되는 C symbol naming은 코드에 고정돼 있으며 YAML로 바꿀 수 없습니다.
-- `input.headers`, `input.clang_args`, `input.ldflags`의 상대 경로는 config 파일 위치 기준으로 해석됩니다.
+- `input.dirs`, `input.headers`, `input.clang_args`, `input.ldflags`의 상대 경로는 config 파일 위치 기준으로 해석됩니다.
 - `input.owner`는 factory method처럼 pointer return이 실제로 ownership을 넘기는 경우에만 사용해야 합니다.
 - `input.owner`는 `WidgetFactory::Create` 같은 qualified callable name으로 매칭되며, 같은 이름의 overload가 있으면 모두 owned로 처리됩니다.
 - env 확장은 `$VAR`, `$(VAR)`, `${VAR}`만 지원합니다.
 
-큰 라이브러리는 감쌀 대상만 담은 작은 adapter header directory를 만들고 `input.dir`로 지정하거나, `input.headers`로 정확한 엔트리 헤더를 지정하는 방식이 권장됩니다.
+큰 라이브러리는 감쌀 대상만 담은 작은 adapter header directory를 만들고 `input.dirs`로 지정하거나, `input.headers`로 정확한 엔트리 헤더를 지정하는 방식이 권장됩니다.
 
 ## 현재 지원 범위
 

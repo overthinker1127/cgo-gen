@@ -121,9 +121,9 @@ cgo-gen ir --config path/to/config.yaml --format yaml
 version: 1
 
 input:
-  dir: path/to/include
+  dirs:
+    - path/to/include
   clang_args:
-    - -Ipath/to/include
     - -std=c++17
   owner:
     - WidgetFactory::Create
@@ -135,7 +135,7 @@ output:
   dir: gen
 ```
 
-正確な entry header list だけを wrap したい場合は、`input.dir` の代わりに `input.headers` を使います。
+正確な entry header list だけを wrap したい場合は、`input.dirs` の代わりに `input.headers` を使います。
 
 ```yaml
 version: 1
@@ -155,8 +155,8 @@ output:
 
 - relative path は config file の場所を基準に解決されます
 - 未対応の key は load 時に error になります
-- `input.dir` は再帰的に scan されます
-- `input.headers` は正確な file list で、`input.dir` と同時には使えません
+- 各 `input.dirs` entry は direct に scan されます。nested directory は明示的に list してください
+- `input.headers` は正確な file list で、`input.dirs` と同時には使えません
 - list された header が include する dependency header は parse されますが、wrapper は `input.headers` に明示した file にだけ生成されます
 - 生成される `.go`, `.h`, `.cpp`, 任意の `.ir.yaml` file はすべて `output.dir` に置かれます
 - `output.go_version` は生成される `go.mod` の Go version を制御し、default は `1.26` です
@@ -195,7 +195,7 @@ cgo-gen generate --config path/to/config.yaml --go-module example.com/acme/foo
 現在の動作:
 
 - `build_flags.go` は常に `#cgo CFLAGS: -I${SRCDIR}` を出力します
-- `#cgo CXXFLAGS` は raw `input.clang_args` からのみ export されます
+- `#cgo CXXFLAGS` は各 `input.dirs` entry と raw `input.clang_args` の安全な subset から export されます
 - export される `CXXFLAGS` は `-I`, `-D`, `-std=...` だけを許可します
 - `input.ldflags` が設定されている場合、`build_flags.go` は `#cgo LDFLAGS` も出力します
 
@@ -205,8 +205,8 @@ cgo-gen generate --config path/to/config.yaml --go-module example.com/acme/foo
 
 最初から多くの knob を知る必要はありません。現在対応している主な key は次の通りです。
 
-- `input.dir`: header discovery と translation-unit discovery に使う再帰 input root
-- `input.headers`: config file の場所を基準に解決される正確な entry header list; `input.dir` とは mutually exclusive
+- `input.dirs`: header discovery と translation-unit discovery に使う direct-only input directories; nested directory は明示的に list してください
+- `input.headers`: config file の場所を基準に解決される正確な entry header list; `input.dirs` とは mutually exclusive
 - `input.clang_args`: `-I...`, `-isystem...`, `-D...`, `-std=...` などの追加 libclang flags
 - `input.owner`: pointer return を owned Go wrapper として出力する qualified callable name
 - `input.ldflags`: 生成される `build_flags.go` に渡す linker flags
@@ -217,12 +217,12 @@ cgo-gen generate --config path/to/config.yaml --go-module example.com/acme/foo
 
 - multi-header generation を使う場合、`output.header`, `output.source`, `output.ir` は default のままにしてください
 - 生成される C symbol naming は source に固定されており、YAML では変更できません
-- `input.headers`, `input.clang_args`, `input.ldflags` の relative path は config file directory を基準に解決されます
+- `input.dirs`, `input.headers`, `input.clang_args`, `input.ldflags` の relative path は config file directory を基準に解決されます
 - `input.owner` は factory method のように pointer return が実際に ownership を渡す場合だけ使ってください
 - `input.owner` は `WidgetFactory::Create` のような qualified callable name で match します。同名 overload がある場合は、すべて owned として扱われます
 - env expansion は `$VAR`, `$(VAR)`, `${VAR}` のみ対応します
 
-大きな library では、wrap したい小さな header surface を adapter directory に置いて `input.dir` に指定するか、`input.headers` で正確な entry header を指定してください。
+大きな library では、wrap したい小さな header surface を adapter directory に置いて `input.dirs` に指定するか、`input.headers` で正確な entry header を指定してください。
 
 ## Supported Today
 

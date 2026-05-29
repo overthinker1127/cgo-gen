@@ -52,7 +52,8 @@ fn write_model_record_dir_config() -> PathBuf {
             r#"
 version: 1
 input:
-  dir: '{include_dir}'
+  dirs:
+    - '{include_dir}'
   clang_args:
     - -std=c++11
     - -x
@@ -72,13 +73,13 @@ output:
 fn gen_model_config_uses_dir_only_input_shape() {
     let config = Config::load(write_model_record_dir_config()).unwrap();
 
-    assert!(config.input.dir.is_some());
+    assert_eq!(config.input.dirs.len(), 1);
 }
 
 #[test]
 fn gen_model_config_generates_go_wrapper_when_sources_exist() {
     let config = Config::load(write_model_record_dir_config()).unwrap();
-    let header = config.input.dir.as_ref().unwrap().join("DataRecord.h");
+    let header = config.input.dirs[0].join("DataRecord.h");
     assert!(header.exists(), "fixture header not found: {header:?}");
 
     let prepared = generator::prepare_config(&PipelineContext::new(config)).unwrap();

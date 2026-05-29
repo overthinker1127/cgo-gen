@@ -21,7 +21,7 @@ pub struct Config {
 #[serde(deny_unknown_fields)]
 pub struct InputConfig {
     #[serde(default)]
-    pub dir: Option<PathBuf>,
+    pub dirs: Vec<PathBuf>,
     #[serde(default)]
     pub headers: Vec<PathBuf>,
     #[serde(default)]
@@ -356,10 +356,10 @@ fn is_supported_header_path(path: &Path) -> bool {
 
 fn collect_headers_from_dir(dir: &Path, output: &mut Vec<PathBuf>) -> Result<()> {
     if !dir.exists() {
-        bail!("input.dir not found: {}", dir.display());
+        bail!("input.dirs entry not found: {}", dir.display());
     }
     if !dir.is_dir() {
-        bail!("input.dir must be a directory: {}", dir.display());
+        bail!("input.dirs entry must be a directory: {}", dir.display());
     }
 
     let mut entries = fs::read_dir(dir)
@@ -370,8 +370,7 @@ fn collect_headers_from_dir(dir: &Path, output: &mut Vec<PathBuf>) -> Result<()>
 
     for entry in entries {
         let path = entry.path();
-        if path.is_dir() {
-            collect_headers_from_dir(&path, output)?;
+        if !path.is_file() {
             continue;
         }
         if !is_supported_header_path(&path) {
@@ -407,7 +406,7 @@ impl Config {
         }
 
         let mut headers = Vec::new();
-        if let Some(dir) = &self.input.dir {
+        for dir in &self.input.dirs {
             collect_headers_from_dir(dir, &mut headers)?;
         }
         Ok(headers)
@@ -427,7 +426,7 @@ impl Config {
 
     fn resolve_relative_paths(&mut self, config_path: &Path) -> Result<()> {
         let base_dir = resolve_config_base_dir(config_path);
-        if let Some(dir) = &mut self.input.dir {
+        for dir in &mut self.input.dirs {
             resolve_path(dir, &base_dir);
         }
         for header in &mut self.input.headers {
@@ -443,20 +442,23 @@ impl Config {
     }
 
     fn validate(&self) -> Result<()> {
-        if self.input.dir.is_some() && !self.input.headers.is_empty() {
-            bail!("config.input.dir and config.input.headers are mutually exclusive");
+        if !self.input.dirs.is_empty() && !self.input.headers.is_empty() {
+            bail!("config.input.dirs and config.input.headers are mutually exclusive");
         }
-        if self.input.dir.is_none() && self.input.headers.is_empty() {
-            bail!("config.input.dir or config.input.headers must be set");
+        if self.input.dirs.is_empty() && self.input.headers.is_empty() {
+            bail!("config.input.dirs or config.input.headers must be set");
         }
-        if let Some(dir) = &self.input.dir
-            && dir.exists()
-            && !dir.is_dir()
-        {
-            bail!(
-                "config.input.dir must point to a directory: {}",
-                dir.display()
-            );
+        let mut seen_dirs = BTreeSet::new();
+        for dir in &self.input.dirs {
+            if !dir.exists() {
+                bail!("input.dirs entry not found: {}", dir.display());
+            }
+            if !dir.is_dir() {
+                bail!("input.dirs entry must be a directory: {}", dir.display());
+            }
+            if !seen_dirs.insert(dir) {
+                bail!("input.dirs entry is duplicated: {}", dir.display());
+            }
         }
         let mut seen_headers = BTreeSet::new();
         for header in &self.input.headers {

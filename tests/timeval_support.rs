@@ -14,7 +14,8 @@ fn write_fixture(name: &str, header: &str) -> std::path::PathBuf {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,

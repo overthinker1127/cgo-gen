@@ -1,0 +1,86 @@
+version: 1
+module: cgowrap
+source_headers:
+- ../B/B.h
+records:
+- cpp_type: B
+  handle_name: BHandle
+  kind: class
+opaque_types:
+- name: BHandle
+  cpp_type: B
+functions:
+- name: cgowrap_B_new
+  kind: constructor
+  cpp_name: B
+  method_of: BHandle
+  owner_cpp_type: B
+  returns:
+    kind: opaque
+    cpp_type: B
+    c_type: BHandle*
+    handle: BHandle
+  params: []
+- name: cgowrap_B_delete
+  kind: destructor
+  cpp_name: B
+  method_of: BHandle
+  owner_cpp_type: B
+  returns:
+    kind: void
+    cpp_type: void
+    c_type: void
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: B*
+      c_type: BHandle*
+      handle: BHandle
+- name: cgowrap_B_Value
+  kind: method
+  cpp_name: B::Value
+  method_of: BHandle
+  owner_cpp_type: B
+  is_const: true
+  returns:
+    kind: primitive
+    cpp_type: int
+    c_type: int
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: const B*
+      c_type: const BHandle*
+      handle: BHandle
+- name: cgowrap_B_SetValue
+  kind: method
+  cpp_name: B::SetValue
+  method_of: BHandle
+  owner_cpp_type: B
+  is_const: false
+  returns:
+    kind: void
+    cpp_type: void
+    c_type: void
+  params:
+  - name: self
+    ty:
+      kind: opaque
+      cpp_type: B*
+      c_type: BHandle*
+      handle: BHandle
+  - name: value
+    ty:
+      kind: primitive
+      cpp_type: int
+      c_type: int
+enums: []
+constants: []
+callbacks: []
+support:
+  parser_backend: libclang
+  notes:
+  - Parsed with clang AST and normalized into a conservative C ABI IR.
+  - v1 intentionally rejects unsupported C++ constructs during type normalization.

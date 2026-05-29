@@ -39,8 +39,8 @@ fn fixture_dir() -> PathBuf {
 fn scoped_model_record_context(config: Config) -> PipelineContext {
     let header = config
         .input
-        .dir
-        .as_ref()
+        .dirs
+        .first()
         .expect("input dir")
         .join("DataRecord.h");
     generator::prepare_config(&PipelineContext::new(config))

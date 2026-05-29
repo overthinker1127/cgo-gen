@@ -121,9 +121,9 @@ cgo-gen ir --config path/to/config.yaml --format yaml
 version: 1
 
 input:
-  dir: path/to/include
+  dirs:
+    - path/to/include
   clang_args:
-    - -Ipath/to/include
     - -std=c++17
   owner:
     - WidgetFactory::Create
@@ -135,7 +135,7 @@ output:
   dir: gen
 ```
 
-如果只想 wrap 精确的 entry header 列表，请用 `input.headers` 代替 `input.dir`：
+如果只想 wrap 精确的 entry header 列表，请用 `input.headers` 代替 `input.dirs`：
 
 ```yaml
 version: 1
@@ -155,8 +155,8 @@ output:
 
 - relative paths 会按 config file 所在位置解析
 - unknown keys 会在 load 时被拒绝
-- `input.dir` 会被递归扫描
-- `input.headers` 是精确 file list，不能和 `input.dir` 同时使用
+- 每个 `input.dirs` entry 只扫描直接子项；nested directory 需要显式列出
+- `input.headers` 是精确 file list，不能和 `input.dirs` 同时使用
 - listed headers include 的 dependency headers 会参与 parse，但只会为 `input.headers` 中列出的 files 生成 wrappers
 - 生成的 `.go`, `.h`, `.cpp` 和可选 `.ir.yaml` files 都会写入 `output.dir`
 - `output.go_version` 控制生成的 `go.mod` 中的 Go version，默认值是 `1.26`
@@ -195,7 +195,7 @@ cgo-gen generate --config path/to/config.yaml --go-module example.com/acme/foo
 当前行为：
 
 - `build_flags.go` 总是输出 `#cgo CFLAGS: -I${SRCDIR}`
-- `#cgo CXXFLAGS` 只从 raw `input.clang_args` 导出
+- `#cgo CXXFLAGS` 会导出每个 `input.dirs` entry 和 raw `input.clang_args` 的安全子集
 - 导出的 `CXXFLAGS` 只允许 `-I`, `-D`, `-std=...`
 - 设置 `input.ldflags` 时，`build_flags.go` 也会输出 `#cgo LDFLAGS`
 
@@ -205,8 +205,8 @@ cgo-gen generate --config path/to/config.yaml --go-module example.com/acme/foo
 
 刚开始不需要了解很多 knobs。当前支持的核心 keys 如下：
 
-- `input.dir`: 用于 header discovery 和 translation-unit discovery 的递归 input root
-- `input.headers`: 按 config file 所在位置解析的精确 entry header list；与 `input.dir` mutually exclusive
+- `input.dirs`: 用于 header discovery 和 translation-unit discovery 的 direct-only input directories；nested directory 需要显式列出
+- `input.headers`: 按 config file 所在位置解析的精确 entry header list；与 `input.dirs` mutually exclusive
 - `input.clang_args`: 额外的 libclang flags，例如 `-I...`, `-isystem...`, `-D...`, `-std=...`
 - `input.owner`: 其 pointer return 应生成为 owned Go wrappers 的 qualified callable names
 - `input.ldflags`: 转发到生成的 `build_flags.go` 的 linker flags
@@ -217,12 +217,12 @@ cgo-gen generate --config path/to/config.yaml --go-module example.com/acme/foo
 
 - 使用 multi-header generation 时，让 `output.header`, `output.source`, `output.ir` 保持默认值
 - 生成的 C symbol naming 固定在 source 中，不能通过 YAML 配置
-- `input.headers`, `input.clang_args`, `input.ldflags` 的 relative paths 会按 config file directory 解析
+- `input.dirs`, `input.headers`, `input.clang_args`, `input.ldflags` 的 relative paths 会按 config file directory 解析
 - 只有在 pointer return 确实转移 ownership 时才使用 `input.owner`，例如返回 `new` 分配对象的 factory method
 - `input.owner` 按 `WidgetFactory::Create` 这样的 qualified callable name 匹配；如果同名 overload 存在，所有匹配 overload 都会被视为 owned
 - env expansion 只支持 `$VAR`, `$(VAR)`, `${VAR}`
 
-对于大型 library，请把想 wrap 的小型 header surface 放到 adapter directory 并用 `input.dir` 指向那里，或用 `input.headers` 指定精确 entry headers。
+对于大型 library，请把想 wrap 的小型 header surface 放到 adapter directory 并用 `input.dirs` 指向那里，或用 `input.headers` 指定精确 entry headers。
 
 ## Supported Today
 

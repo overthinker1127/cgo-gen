@@ -129,9 +129,9 @@ The supported config surface is intentionally small:
 version: 1
 
 input:
-  dir: path/to/include
+  dirs:
+    - path/to/include
   clang_args:
-    - -Ipath/to/include
     - -std=c++17
   owner:
     - WidgetFactory::Create
@@ -143,7 +143,7 @@ output:
   dir: gen
 ```
 
-Use `input.headers` instead of `input.dir` when you want to wrap an exact list of entry headers:
+Use `input.headers` instead of `input.dirs` when you want to wrap an exact list of entry headers:
 
 ```yaml
 version: 1
@@ -163,8 +163,9 @@ Key behaviors:
 
 - relative paths are resolved from the config file location
 - unknown keys are rejected at load time
-- `input.dir` is scanned recursively
-- `input.headers` is an exact file list and cannot be combined with `input.dir`
+- each `input.dirs` entry is scanned directly; nested directories are ignored unless listed explicitly
+- every `input.dirs` entry is treated as an owned header root and added to libclang/cgo include flags
+- `input.headers` is an exact file list and cannot be combined with `input.dirs`
 - headers included by listed files are parsed as dependencies, but wrappers are generated only for files listed in `input.headers`
 - generated `.go`, `.h`, `.cpp`, and optional `.ir.yaml` files are written together under `output.dir`
 - object-like integer, floating-point, and ordinary string literal macros are emitted as Go constants
@@ -204,7 +205,7 @@ When enabled, `generate` also writes:
 Current behavior:
 
 - `build_flags.go` always emits `#cgo CFLAGS: -I${SRCDIR}`
-- `#cgo CXXFLAGS` are exported from raw `input.clang_args` only
+- `#cgo CXXFLAGS` include every `input.dirs` entry plus safe exports from raw `input.clang_args`
 - exported `CXXFLAGS` allow only `-I`, `-D`, and `-std=...`
 - when `input.ldflags` is set, `build_flags.go` also emits `#cgo LDFLAGS`
 
@@ -214,8 +215,8 @@ Use this mode when the generated directory itself should be imported and built a
 
 You do not need many knobs to get started. These are the supported ones:
 
-- `input.dir`: recursive input root used for header discovery and translation-unit discovery
-- `input.headers`: exact entry header list, resolved from the config file location; mutually exclusive with `input.dir`
+- `input.dirs`: direct input directories used for owned header discovery and translation-unit discovery; list nested directories explicitly
+- `input.headers`: exact entry header list, resolved from the config file location; mutually exclusive with `input.dirs`
 - `input.clang_args`: extra libclang flags such as `-I...`, `-isystem...`, `-D...`, `-std=...`
 - `input.owner`: qualified callable names whose pointer returns should be emitted as owned Go wrappers
 - `input.ldflags`: linker flags forwarded into generated `build_flags.go`
@@ -226,12 +227,12 @@ Important caveats:
 
 - if you use multi-header generation, leave `output.header`, `output.source`, and `output.ir` at their defaults
 - generated C symbol naming is fixed in source and is not configurable via YAML
-- `input.headers`, `input.clang_args`, and `input.ldflags` resolve relative paths from the config file directory
+- `input.dirs`, `input.headers`, `input.clang_args`, and `input.ldflags` resolve relative paths from the config file directory
 - use `input.owner` only when a pointer return actually transfers ownership, for example a factory method that returns `new`-allocated objects
 - `input.owner` matches by qualified callable name such as `WidgetFactory::Create`; if the same name is overloaded, every matching overload is treated as owned
 - env expansion supports `$VAR`, `$(VAR)`, and `${VAR}` only
 
-For large libraries, either put the small header surface you want to wrap in an adapter directory and point `input.dir` there, or use `input.headers` to name the exact entry headers.
+For large libraries, either put the small header surface you want to wrap in one or more adapter directories and list them in `input.dirs`, or use `input.headers` to name the exact entry headers.
 
 ## Supported Today
 

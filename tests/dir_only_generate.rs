@@ -1,4 +1,8 @@
-use std::{env, fs, path::PathBuf};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 use cgo_gen::{Config, PipelineContext, generator};
 
@@ -52,7 +56,8 @@ fn dir_only_generation_uses_classified_headers_for_model_and_facade_outputs() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -94,7 +99,8 @@ fn nested_output_dir_places_all_generated_files_at_output_root() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: ./gen/test
 "#,
@@ -149,7 +155,8 @@ fn dir_generation_skips_standalone_outputs_for_owner_inline_headers() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -243,4 +250,100 @@ output:
     assert!(!output_dir.join("skipped_wrapper.h").exists());
     assert!(!output_dir.join("skipped_wrapper.cpp").exists());
     assert!(!output_dir.join("skipped_wrapper.go").exists());
+}
+
+#[test]
+fn multiple_owned_dirs_generate_shared_model_handles_and_compile() {
+    let root = temp_dir("multiple_owned_dirs_compile");
+    let a_dir = root.join("A");
+    let b_dir = root.join("B");
+    fs::create_dir_all(&a_dir).unwrap();
+    fs::create_dir_all(&b_dir).unwrap();
+
+    fs::write(
+        a_dir.join("A.hpp"),
+        r#"
+        #pragma once
+        #include "../B/B.hpp"
+
+        class A {
+        public:
+            A() {}
+            B child;
+            B* Child() { return &child; }
+        };
+        "#,
+    )
+    .unwrap();
+    fs::write(
+        b_dir.join("B.hpp"),
+        r#"
+        #pragma once
+
+        class B {
+        public:
+            B() {}
+            int Value() const { return 7; }
+        };
+        "#,
+    )
+    .unwrap();
+
+    fs::write(
+        root.join("config.yaml"),
+        r#"
+version: 1
+input:
+  dirs:
+    - A
+    - B
+output:
+  dir: gen
+"#,
+    )
+    .unwrap();
+
+    let ctx = PipelineContext::from_config_path(root.join("config.yaml"))
+        .unwrap()
+        .with_go_module(Some("example.com/demo".to_string()));
+    generator::generate_all(&ctx, true).unwrap();
+
+    let output_dir = root.join("gen");
+    assert!(output_dir.join("a_wrapper.h").exists());
+    assert!(output_dir.join("b_wrapper.h").exists());
+
+    let a_header = fs::read_to_string(output_dir.join("a_wrapper.h")).unwrap();
+    assert!(a_header.contains("typedef struct BHandle BHandle;"));
+    assert!(a_header.contains("BHandle* cgowrap_A_Child(AHandle* self);"));
+
+    let build_flags = fs::read_to_string(output_dir.join("build_flags.go")).unwrap();
+    assert!(build_flags.contains("-I${SRCDIR}/../A"));
+    assert!(build_flags.contains("-I${SRCDIR}/../B"));
+
+    compile_generated_cpp(&root, "a_wrapper.cpp");
+    compile_generated_cpp(&root, "b_wrapper.cpp");
+}
+
+fn compile_generated_cpp(root: &Path, source: &str) {
+    let output = Command::new("c++")
+        .arg("-std=c++17")
+        .arg("-I")
+        .arg(root.join("gen"))
+        .arg("-I")
+        .arg(root.join("A"))
+        .arg("-I")
+        .arg(root.join("B"))
+        .arg("-c")
+        .arg(root.join("gen").join(source))
+        .arg("-o")
+        .arg(root.join("gen").join(format!("{source}.o")))
+        .output()
+        .unwrap_or_else(|error| panic!("failed to run c++: {error}"));
+
+    assert!(
+        output.status.success(),
+        "failed to compile {source}:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
 }

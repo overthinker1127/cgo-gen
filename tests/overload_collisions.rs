@@ -87,7 +87,8 @@ fn disambiguates_overloaded_constructors_without_panicking() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -134,7 +135,8 @@ fn renders_go_facade_for_overloaded_constructors_with_explicit_names() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -195,7 +197,8 @@ fn renders_dispatchers_for_unambiguous_go_overloads() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -269,7 +272,8 @@ fn expands_trailing_cxx_default_arguments_as_overload_variants() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -373,7 +377,8 @@ fn renders_callback_overload_dispatcher_with_inline_bridge_call() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -418,7 +423,8 @@ fn skips_default_argument_variant_when_real_overload_already_owns_the_arity() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -484,7 +490,8 @@ fn skips_dispatcher_for_model_ref_and_pointer_ambiguity() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,

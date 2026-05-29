@@ -41,7 +41,8 @@ fn resolves_typedef_aliases_via_canonical_types() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,
@@ -101,7 +102,8 @@ fn resolves_typedef_alias_fixed_array_fields_via_canonical_types() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,
@@ -158,7 +160,8 @@ fn resolves_reason_and_subscription_fixed_arrays_via_canonical_unsigned_types() 
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,

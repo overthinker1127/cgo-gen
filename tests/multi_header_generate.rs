@@ -46,7 +46,8 @@ fn generates_one_wrapper_set_per_header_from_single_config() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -131,7 +132,8 @@ fn emits_unified_go_wrappers_for_each_supported_header() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -185,7 +187,8 @@ fn multi_header_model_value_return_emits_delete_with_owned_go_wrapper() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -228,7 +231,8 @@ fn emits_unified_go_enums_without_classification() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -268,7 +272,8 @@ fn unclassified_headers_still_emit_unified_go_wrappers() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,

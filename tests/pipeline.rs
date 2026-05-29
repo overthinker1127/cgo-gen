@@ -81,7 +81,8 @@ fn parses_struct_and_class_as_distinct_record_kinds() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,

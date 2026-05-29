@@ -36,7 +36,8 @@ fn legacy_model_classification_still_emits_direct_facade_methods() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -90,7 +91,8 @@ fn known_model_out_params_work_without_model_filters() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,

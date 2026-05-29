@@ -38,7 +38,8 @@ fn skips_declarations_using_function_pointer_types() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,
@@ -105,7 +106,8 @@ fn generates_operator_declarations() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,
@@ -222,7 +224,8 @@ fn parses_operator_header_definition_metadata() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,
@@ -315,7 +318,8 @@ fn merges_operator_definition_metadata_across_translation_units() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,
@@ -362,7 +366,8 @@ fn skips_function_bodies_while_detecting_inline_operator_definitions() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,
@@ -403,7 +408,8 @@ fn parses_conversion_operators_as_member_operators() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,
@@ -456,7 +462,8 @@ fn distinguishes_assignment_operator_tokens_for_wrapper_names() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,
@@ -503,7 +510,8 @@ fn parses_friend_operators_as_free_operators() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,
@@ -553,7 +561,8 @@ fn generates_default_argument_variants_for_call_operator() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,
@@ -603,7 +612,8 @@ fn skips_allocator_operators_without_affecting_lifecycle_wrappers() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,
@@ -694,7 +704,8 @@ fn skips_double_pointer_model_declarations() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,
@@ -758,7 +769,8 @@ fn skips_double_pointer_string_declarations() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,

@@ -42,7 +42,8 @@ fn skips_constructor_for_abstract_class() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,

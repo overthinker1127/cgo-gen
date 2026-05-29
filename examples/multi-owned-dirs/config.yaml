@@ -2,7 +2,9 @@ version: 1
 
 input:
   dirs:
-    - input
+    - A
+    - B
 
 output:
   dir: generated
+  go_version: "1.26"

@@ -1,7 +1,8 @@
 version: 1
 
 input:
-  dir: include
+  dirs:
+    - include
 
 output:
   dir: out

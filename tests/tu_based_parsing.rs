@@ -65,7 +65,8 @@ fn dir_only_config_collects_only_owned_header_declarations() {
             r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
   clang_args:
     - -I{}
     - -I{}
@@ -131,7 +132,8 @@ fn dir_only_config_prefers_sources_when_present() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -182,7 +184,8 @@ fn dir_only_config_expands_classified_header_directory_into_all_grouped_headers(
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -232,7 +235,8 @@ fn scoped_header_keeps_dir_translation_unit_context() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -292,7 +296,8 @@ fn dir_only_config_keeps_standalone_headers_even_when_sources_exist() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -308,8 +313,8 @@ output:
 }
 
 #[test]
-fn dir_only_config_recurses_through_deeply_nested_input_tree() {
-    let fixture = temp_fixture_dir("deep_nested_tree");
+fn dir_only_config_ignores_unlisted_nested_input_tree() {
+    let fixture = temp_fixture_dir("deep_nested_tree_ignored");
     let nested_dir = fixture.join("include/api/v1/models");
     fs::create_dir_all(&nested_dir).unwrap();
 
@@ -335,7 +340,53 @@ fn dir_only_config_recurses_through_deeply_nested_input_tree() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
+output:
+  dir: gen
+"#,
+    )
+    .unwrap();
+
+    let config = Config::load(fixture.join("config.yaml")).unwrap();
+    let units = compiler::collect_translation_units(&config).unwrap();
+    let parsed = parser::parse(&PipelineContext::new(config)).unwrap();
+
+    assert!(units.is_empty());
+    assert!(!parsed.records.iter().any(|record| record.name == "Thing"));
+}
+
+#[test]
+fn dir_only_config_collects_listed_nested_direct_dirs() {
+    let fixture = temp_fixture_dir("deep_nested_tree_listed");
+    let nested_dir = fixture.join("include/api/v1/models");
+    fs::create_dir_all(&nested_dir).unwrap();
+
+    fs::write(
+        nested_dir.join("Thing.hpp"),
+        r#"
+        class Thing {
+        public:
+            int GetValue() const { return 7; }
+        };
+        "#,
+    )
+    .unwrap();
+    fs::write(
+        fixture.join("include/api/v1/Api.cpp"),
+        r#"
+        #include "models/Thing.hpp"
+        "#,
+    )
+    .unwrap();
+    fs::write(
+        fixture.join("config.yaml"),
+        r#"
+version: 1
+input:
+  dirs:
+    - include/api/v1
+    - include/api/v1/models
 output:
   dir: gen
 "#,
@@ -355,6 +406,55 @@ output:
             .any(|header| header.ends_with("include/api/v1/models/Thing.hpp"))
     );
     assert!(parsed.records.iter().any(|record| record.name == "Thing"));
+}
+
+#[test]
+fn dir_only_config_collects_owned_declarations_from_multiple_direct_dirs() {
+    let fixture = temp_fixture_dir("multiple_direct_dirs");
+    fs::create_dir_all(fixture.join("A")).unwrap();
+    fs::create_dir_all(fixture.join("B")).unwrap();
+
+    fs::write(
+        fixture.join("A/A.hpp"),
+        r#"
+        #include "../B/B.hpp"
+
+        class A {
+        public:
+            B child;
+        };
+        "#,
+    )
+    .unwrap();
+    fs::write(
+        fixture.join("B/B.hpp"),
+        r#"
+        class B {
+        public:
+            int value;
+        };
+        "#,
+    )
+    .unwrap();
+    fs::write(
+        fixture.join("config.yaml"),
+        r#"
+version: 1
+input:
+  dirs:
+    - A
+    - B
+output:
+  dir: gen
+"#,
+    )
+    .unwrap();
+
+    let config = Config::load(fixture.join("config.yaml")).unwrap();
+    let parsed = parser::parse(&PipelineContext::new(config)).unwrap();
+
+    assert!(parsed.records.iter().any(|record| record.name == "A"));
+    assert!(parsed.records.iter().any(|record| record.name == "B"));
 }
 
 #[test]

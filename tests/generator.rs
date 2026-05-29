@@ -71,7 +71,8 @@ fn renders_operator_wrappers_in_c_and_go() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -131,7 +132,8 @@ fn renders_operator_default_argument_dispatchers_with_valid_go_names() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -187,7 +189,8 @@ fn parsed_struct_pointers_use_handle_wrappers_while_foreign_structs_stay_direct(
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -260,7 +263,8 @@ fn preserves_const_char_spelling_but_normalizes_c_value_type() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -303,7 +307,8 @@ fn renders_typedef_anonymous_enums_with_alias_name() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -347,7 +352,8 @@ fn renders_standalone_anonymous_enums_as_untyped_go_constants() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -402,7 +408,8 @@ fn renders_standalone_macros_as_go_constants() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -536,7 +543,8 @@ fn renders_typedef_enum_alias_method_params_as_value_enums() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -617,7 +625,8 @@ fn normalizes_primitive_alias_pointer_and_reference_c_types_in_header() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -666,7 +675,8 @@ fn generate_with_go_module_writes_build_flags_and_go_mod() {
             r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
   clang_args:
     - -Irelative/inline
     - -I
@@ -711,7 +721,7 @@ output:
     assert!(build_flags.contains("package out"));
     assert!(build_flags.contains("#cgo CFLAGS: -I${SRCDIR}"));
     assert!(build_flags.contains(&format!(
-        "#cgo CXXFLAGS: -I${{SRCDIR}} -I${{SRCDIR}}/../relative/inline -I ${{SRCDIR}}/../relative/split -I{} -I {} -I{} -D SPLIT=1 -DMODE=1 -std=c++20",
+        "#cgo CXXFLAGS: -I${{SRCDIR}} -I${{SRCDIR}}/../include -I${{SRCDIR}}/../relative/inline -I ${{SRCDIR}}/../relative/split -I{} -I {} -I{} -D SPLIT=1 -DMODE=1 -std=c++20",
         absolute_inline.display(),
         absolute_split.display(),
         root.join("sdk/include").display()
@@ -737,7 +747,8 @@ fn generate_with_go_module_uses_configured_go_version() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
   go_version: "1.24"
@@ -782,7 +793,8 @@ fn struct_fields_generate_synthetic_accessors() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -866,7 +878,8 @@ fn struct_fixed_model_array_fields_render_element_type_in_source() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -945,7 +958,8 @@ fn renders_model_value_return_as_owned_handle_copy() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -1107,7 +1121,8 @@ fn renders_model_pointer_and_reference_returns_as_borrowed_handles() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -1163,7 +1178,8 @@ fn renders_model_value_field_accessors_as_borrowed_get_and_explicit_set() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -1224,7 +1240,8 @@ fn renders_go_fixed_array_typedef_aliases_with_canonical_unsigned_types() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -1288,7 +1305,8 @@ fn renders_reason_and_subscription_fixed_arrays_as_uint32_slices() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,
@@ -1367,7 +1385,8 @@ fn avoids_false_bool_suffix_for_underscore_backed_field_setters_but_keeps_real_o
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: gen
 "#,

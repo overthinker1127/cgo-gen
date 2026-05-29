@@ -1,9 +1,9 @@
 version: 1
 
 input:
-  dir: input
+  dirs:
+    - input
   clang_args:
-    - -Iinput
     - -std=c++17
 
 output:

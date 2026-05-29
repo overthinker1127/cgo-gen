@@ -57,7 +57,8 @@ fn generates_go_facade_for_bool_and_string_returns() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,
@@ -114,7 +115,8 @@ fn rejects_namespaced_facade_functions_that_collide_in_go_exports() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,
@@ -163,7 +165,8 @@ fn preserves_numeric_suffix_underscores_in_go_method_names() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,
@@ -221,7 +224,8 @@ fn supports_facade_classes_with_object_pointer_constructor_params() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,
@@ -281,7 +285,8 @@ fn supports_facade_classes_with_object_reference_constructor_params() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,
@@ -346,7 +351,8 @@ fn exposes_object_out_params_as_direct_wrapper_pointer_arguments() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,
@@ -440,7 +446,8 @@ fn keeps_unknown_model_refs_in_raw_wrappers_but_filters_them_from_go_facade() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,
@@ -524,7 +531,8 @@ fn supports_by_value_internal_types_without_aborting_supported_facade_output() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,
@@ -601,7 +609,8 @@ fn keeps_non_model_methods_on_general_api_path_even_if_names_look_like_lookup_ap
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,
@@ -662,7 +671,8 @@ fn exposes_model_pointer_and_reference_returns_as_borrowed_wrappers_in_go_facade
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,
@@ -724,7 +734,8 @@ fn renders_owner_marked_model_pointer_returns_as_owned_in_go_facade() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
   owner:
     - DBHandlerFactory::CreateHandler
 output:
@@ -789,7 +800,8 @@ fn renders_const_model_borrow_returns_in_go_facade() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,
@@ -856,7 +868,8 @@ fn supports_object_reference_params_even_outside_last_position() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,
@@ -916,7 +929,8 @@ fn renders_next_style_methods_with_reference_cursor_and_handle_backed_model_out_
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,
@@ -985,7 +999,8 @@ fn generates_callback_typedefs_and_facade_bridge_helpers() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,

@@ -2,8 +2,8 @@
 
 Minimal example for generation with `--go-module`.
 
-`input.clang_args` includes `-Iinput` so the generated Go module exports the
-same include path through `build_flags.go`. Native implementations such as
+`input.dirs` is exported through `build_flags.go` so the generated Go module
+can compile against the input headers. Native implementations such as
 `input/score.c` still need to be built or linked by the consuming package.
 
 ```bash

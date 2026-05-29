@@ -117,6 +117,22 @@ fn checked_in_example_generated_outputs_are_current() {
         ],
     );
     assert_generated_matches(
+        "examples/multi-owned-dirs",
+        Some("example.com/cgo-gen/examples/multi-owned-dirs/generated"),
+        &[
+            "a_wrapper.h",
+            "a_wrapper.cpp",
+            "a_wrapper.go",
+            "a_wrapper.ir.yaml",
+            "b_wrapper.h",
+            "b_wrapper.cpp",
+            "b_wrapper.go",
+            "b_wrapper.ir.yaml",
+            "go.mod",
+            "build_flags.go",
+        ],
+    );
+    assert_generated_matches(
         "examples/owner-return",
         None,
         &[

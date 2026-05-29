@@ -44,7 +44,8 @@ fn write_simple_cpp_config(root: &Path) -> PathBuf {
         format!(
             r#"version: 1
 input:
-  dir: {}
+  dirs:
+    - {}
   clang_args:
     - -std=c++17
 output:
@@ -157,7 +158,8 @@ fn generated_wrapper_compiles_for_enum_and_alias_overload_header() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,
@@ -239,7 +241,8 @@ fn generated_wrapper_compiles_for_struct_field_accessors() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,
@@ -315,7 +318,8 @@ fn generated_wrapper_compiles_for_char_array_field_accessors() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,
@@ -407,7 +411,8 @@ fn generated_wrapper_compiles_for_fixed_model_array_field_accessors() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,
@@ -508,7 +513,8 @@ fn generated_wrapper_compiles_for_model_value_borrow_semantics() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,
@@ -607,7 +613,8 @@ fn generated_wrapper_compiles_for_abstract_model_pointer_returns() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
   owner:
     - DBHandlerFactory::CreateHandler
 output:
@@ -720,7 +727,8 @@ fn generated_wrapper_compiles_for_target_last_cyclic_header_prelude() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,
@@ -851,7 +859,8 @@ fn generated_wrapper_compiles_for_support_header_prelude_tokens() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,
@@ -939,7 +948,8 @@ fn generated_wrapper_compiles_for_const_model_value_and_reference_args() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,
@@ -1039,7 +1049,8 @@ fn generated_wrapper_compiles_and_runs_for_operators() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,
@@ -1132,7 +1143,8 @@ fn generated_wrapper_compiles_and_runs_for_index_operator_reference_returns() {
         r#"
 version: 1
 input:
-  dir: include
+  dirs:
+    - include
 output:
   dir: out
 "#,
