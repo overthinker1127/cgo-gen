@@ -325,14 +325,14 @@ mod tests {
     #[test]
     fn generation_summary_mentions_file_count_and_output_dir() {
         let mut summary = GenerationSummary::default();
-        summary.record_for_test("examples/c-library/generated/calculator_wrapper.h");
-        summary.record_for_test("examples/c-library/generated/calculator_wrapper.cpp");
-        summary.record_for_test("examples/c-library/generated/calculator_wrapper.go");
-        summary.record_for_test("examples/c-library/generated/calculator_wrapper.ir.yaml");
+        summary.record_for_test("examples/01-c-library/generated/calculator_wrapper.h");
+        summary.record_for_test("examples/01-c-library/generated/calculator_wrapper.cpp");
+        summary.record_for_test("examples/01-c-library/generated/calculator_wrapper.go");
+        summary.record_for_test("examples/01-c-library/generated/calculator_wrapper.ir.yaml");
 
         assert_eq!(
             format_generation_summary(&summary),
-            "generated 4 files in examples/c-library/generated"
+            "generated 4 files in examples/01-c-library/generated"
         );
     }
 

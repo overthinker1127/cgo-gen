@@ -16,8 +16,8 @@ From a repository checkout, run `check` first against the smallest example, then
 generate wrappers from the same config:
 
 ```bash
-cargo run --bin cgo-gen -- check --config examples/c-library/config.yaml
-cargo run --bin cgo-gen -- generate --config examples/c-library/config.yaml --dump-ir
+cargo run --bin cgo-gen -- check --config examples/01-c-library/config.yaml
+cargo run --bin cgo-gen -- generate --config examples/01-c-library/config.yaml --dump-ir
 ```
 
 That flow:
@@ -34,6 +34,8 @@ After installing `cgo-gen`, use the same flow with your own config:
 cgo-gen check --config path/to/config.yaml
 cgo-gen generate --config path/to/config.yaml --dump-ir
 ```
+
+For a guided progression, see the numbered [examples](./examples/README.md).
 
 ## Requirements
 

@@ -19,7 +19,7 @@ fn temp_output_dir(label: &str) -> PathBuf {
 
 #[test]
 fn checked_in_cpp_inventory_example_uses_handle_backed_item_and_reference_cursor() {
-    let example_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/cpp-inventory");
+    let example_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/08-cpp-inventory");
     let mut config = Config::load(example_dir.join("config.yaml")).unwrap();
     config.output.dir = temp_output_dir("generate");
     let ctx = PipelineContext::new(config.clone());

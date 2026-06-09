@@ -1773,8 +1773,8 @@ mod tests {
 
     #[test]
     fn source_header_paths_can_be_written_relative_to_generated_ir_dir() {
-        let header = Path::new("/repo/examples/c-library/input/calculator.h");
-        let generated_dir = Path::new("/repo/examples/c-library/generated");
+        let header = Path::new("/repo/examples/01-c-library/input/calculator.h");
+        let generated_dir = Path::new("/repo/examples/01-c-library/generated");
 
         assert_eq!(
             relative_path(header, generated_dir).unwrap(),

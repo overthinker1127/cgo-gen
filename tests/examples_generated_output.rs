@@ -57,7 +57,7 @@ fn assert_generated_matches(example: &str, go_module: Option<&str>, expected_fil
 #[test]
 fn checked_in_example_generated_outputs_are_current() {
     assert_generated_matches(
-        "examples/c-library",
+        "examples/01-c-library",
         None,
         &[
             "calculator_wrapper.h",
@@ -67,7 +67,7 @@ fn checked_in_example_generated_outputs_are_current() {
         ],
     );
     assert_generated_matches(
-        "examples/cpp-class",
+        "examples/02-cpp-class",
         None,
         &[
             "counter_wrapper.h",
@@ -77,33 +77,45 @@ fn checked_in_example_generated_outputs_are_current() {
         ],
     );
     assert_generated_matches(
-        "examples/cpp-inventory",
+        "examples/03-macros",
         None,
         &[
-            "inventory_item_wrapper.h",
-            "inventory_item_wrapper.cpp",
-            "inventory_item_wrapper.go",
-            "inventory_item_wrapper.ir.yaml",
-            "inventory_service_wrapper.h",
-            "inventory_service_wrapper.cpp",
-            "inventory_service_wrapper.go",
-            "inventory_service_wrapper.ir.yaml",
+            "macro_constants_wrapper.go",
+            "macro_constants_wrapper.ir.yaml",
         ],
     );
     assert_generated_matches(
-        "examples/go-module",
-        Some("example.com/cgo-gen/examples/go-module/generated"),
+        "examples/04-enums",
+        None,
         &[
-            "score_wrapper.h",
-            "score_wrapper.cpp",
-            "score_wrapper.go",
-            "score_wrapper.ir.yaml",
-            "go.mod",
-            "build_flags.go",
+            "device_controller_wrapper.h",
+            "device_controller_wrapper.cpp",
+            "device_controller_wrapper.go",
+            "device_controller_wrapper.ir.yaml",
         ],
     );
     assert_generated_matches(
-        "examples/headers-list",
+        "examples/05-struct-fields",
+        None,
+        &[
+            "sensor_reading_wrapper.h",
+            "sensor_reading_wrapper.cpp",
+            "sensor_reading_wrapper.go",
+            "sensor_reading_wrapper.ir.yaml",
+        ],
+    );
+    assert_generated_matches(
+        "examples/06-strings",
+        None,
+        &[
+            "string_tool_wrapper.h",
+            "string_tool_wrapper.cpp",
+            "string_tool_wrapper.go",
+            "string_tool_wrapper.ir.yaml",
+        ],
+    );
+    assert_generated_matches(
+        "examples/07-headers-list",
         None,
         &[
             "selected_widget_wrapper.h",
@@ -117,8 +129,74 @@ fn checked_in_example_generated_outputs_are_current() {
         ],
     );
     assert_generated_matches(
-        "examples/multi-owned-dirs",
-        Some("example.com/cgo-gen/examples/multi-owned-dirs/generated"),
+        "examples/08-cpp-inventory",
+        None,
+        &[
+            "inventory_item_wrapper.h",
+            "inventory_item_wrapper.cpp",
+            "inventory_item_wrapper.go",
+            "inventory_item_wrapper.ir.yaml",
+            "inventory_service_wrapper.h",
+            "inventory_service_wrapper.cpp",
+            "inventory_service_wrapper.go",
+            "inventory_service_wrapper.ir.yaml",
+        ],
+    );
+    assert_generated_matches(
+        "examples/09-go-module",
+        Some("example.com/cgo-gen/examples/09-go-module/generated"),
+        &[
+            "score_wrapper.h",
+            "score_wrapper.cpp",
+            "score_wrapper.go",
+            "score_wrapper.ir.yaml",
+            "go.mod",
+            "build_flags.go",
+        ],
+    );
+    assert_generated_matches(
+        "examples/10-owner-return",
+        None,
+        &[
+            "session_factory_wrapper.h",
+            "session_factory_wrapper.cpp",
+            "session_factory_wrapper.go",
+            "session_factory_wrapper.ir.yaml",
+        ],
+    );
+    assert_generated_matches(
+        "examples/11-overloading",
+        None,
+        &[
+            "overload_math_wrapper.h",
+            "overload_math_wrapper.cpp",
+            "overload_math_wrapper.go",
+            "overload_math_wrapper.ir.yaml",
+        ],
+    );
+    assert_generated_matches(
+        "examples/12-default-arguments",
+        None,
+        &[
+            "default_arguments_wrapper.h",
+            "default_arguments_wrapper.cpp",
+            "default_arguments_wrapper.go",
+            "default_arguments_wrapper.ir.yaml",
+        ],
+    );
+    assert_generated_matches(
+        "examples/13-operators",
+        None,
+        &[
+            "vector_2_wrapper.h",
+            "vector_2_wrapper.cpp",
+            "vector_2_wrapper.go",
+            "vector_2_wrapper.ir.yaml",
+        ],
+    );
+    assert_generated_matches(
+        "examples/14-multi-owned-dirs",
+        Some("example.com/cgo-gen/examples/14-multi-owned-dirs/generated"),
         &[
             "a_wrapper.h",
             "a_wrapper.cpp",
@@ -133,58 +211,8 @@ fn checked_in_example_generated_outputs_are_current() {
         ],
     );
     assert_generated_matches(
-        "examples/owner-return",
-        None,
-        &[
-            "session_factory_wrapper.h",
-            "session_factory_wrapper.cpp",
-            "session_factory_wrapper.go",
-            "session_factory_wrapper.ir.yaml",
-        ],
-    );
-    assert_generated_matches(
-        "examples/enums",
-        None,
-        &[
-            "device_controller_wrapper.h",
-            "device_controller_wrapper.cpp",
-            "device_controller_wrapper.go",
-            "device_controller_wrapper.ir.yaml",
-        ],
-    );
-    assert_generated_matches(
-        "examples/overloading",
-        None,
-        &[
-            "overload_math_wrapper.h",
-            "overload_math_wrapper.cpp",
-            "overload_math_wrapper.go",
-            "overload_math_wrapper.ir.yaml",
-        ],
-    );
-    assert_generated_matches(
-        "examples/struct-fields",
-        None,
-        &[
-            "sensor_reading_wrapper.h",
-            "sensor_reading_wrapper.cpp",
-            "sensor_reading_wrapper.go",
-            "sensor_reading_wrapper.ir.yaml",
-        ],
-    );
-    assert_generated_matches(
-        "examples/strings",
-        None,
-        &[
-            "string_tool_wrapper.h",
-            "string_tool_wrapper.cpp",
-            "string_tool_wrapper.go",
-            "string_tool_wrapper.ir.yaml",
-        ],
-    );
-    assert_generated_matches(
-        "examples/static-shared-library",
-        Some("example.com/cgo-gen/examples/static-shared-library/generated"),
+        "examples/15-static-shared-library",
+        Some("example.com/cgo-gen/examples/15-static-shared-library/generated"),
         &[
             "library_math_wrapper.h",
             "library_math_wrapper.cpp",
@@ -192,34 +220,6 @@ fn checked_in_example_generated_outputs_are_current() {
             "library_math_wrapper.ir.yaml",
             "go.mod",
             "build_flags.go",
-        ],
-    );
-    assert_generated_matches(
-        "examples/default-arguments",
-        None,
-        &[
-            "default_arguments_wrapper.h",
-            "default_arguments_wrapper.cpp",
-            "default_arguments_wrapper.go",
-            "default_arguments_wrapper.ir.yaml",
-        ],
-    );
-    assert_generated_matches(
-        "examples/macros",
-        None,
-        &[
-            "macro_constants_wrapper.go",
-            "macro_constants_wrapper.ir.yaml",
-        ],
-    );
-    assert_generated_matches(
-        "examples/operators",
-        None,
-        &[
-            "vector_2_wrapper.h",
-            "vector_2_wrapper.cpp",
-            "vector_2_wrapper.go",
-            "vector_2_wrapper.ir.yaml",
         ],
     );
 }
