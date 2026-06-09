@@ -199,7 +199,9 @@ cgo-gen generate --config path/to/config.yaml --go-module example.com/acme/foo
 - 导出的 `CXXFLAGS` 只允许 `-I`, `-D`, `-std=...`
 - 设置 `input.ldflags` 时，`build_flags.go` 也会输出 `#cgo LDFLAGS`
 
-当生成目录本身需要被 import 并 build 为 Go package 时使用这个 mode。
+当生成目录需要携带 Go module metadata 时使用这个 mode。
+Native headers, sources, libraries 仍需通过 include paths, copied headers, `input.ldflags`
+等方式单独提供给 Go build。
 
 ## Config Options That Matter Most
 

@@ -199,7 +199,9 @@ cgo-gen generate --config path/to/config.yaml --go-module example.com/acme/foo
 - export される `CXXFLAGS` は `-I`, `-D`, `-std=...` だけを許可します
 - `input.ldflags` が設定されている場合、`build_flags.go` は `#cgo LDFLAGS` も出力します
 
-生成ディレクトリ自体を Go package として import/build したい場合にこの mode を使います。
+生成ディレクトリに Go module metadata を持たせたい場合にこの mode を使います。
+Native headers, sources, libraries は include paths, copied headers, `input.ldflags`
+などで Go build に別途渡す必要があります。
 
 ## Config Options That Matter Most
 

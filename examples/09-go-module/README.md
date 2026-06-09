@@ -1,10 +1,14 @@
 # 09 Go Module
 
-Minimal example for generation with `--go-module`.
+Minimal example for writing Go module metadata with `--go-module`.
 
-`input.dirs` is exported through `build_flags.go` so the generated Go module
-can compile against the input headers. Native implementations such as
-`input/score.c` still need to be built or linked by the consuming package.
+This example shows `go.mod` and `build_flags.go` generation only. It is not a
+standalone buildable Go package by itself because the native implementation is
+kept outside `generated/`.
+
+Native headers and implementations such as `input/score.h` and `input/score.c`
+still need to be made available by the consuming package, for example by
+copying/installing headers and linking a native `.a` or `.so`.
 
 ```bash
 cargo run --bin cgo-gen -- check --config examples/09-go-module/config.yaml

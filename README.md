@@ -211,7 +211,9 @@ Current behavior:
 - exported `CXXFLAGS` allow only `-I`, `-D`, and `-std=...`
 - when `input.ldflags` is set, `build_flags.go` also emits `#cgo LDFLAGS`
 
-Use this mode when the generated directory itself should be imported and built as a Go package.
+Use this mode when the generated directory should carry Go module metadata.
+Native headers, sources, and libraries still need to be made available to the
+Go build through include paths, copied headers, or `input.ldflags`.
 
 ## Config Options That Matter Most
 

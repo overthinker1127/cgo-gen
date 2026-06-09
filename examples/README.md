@@ -12,7 +12,7 @@ Examples are numbered from simpler surfaces to more involved integration cases.
 | 06 | [Strings](./06-strings) | C strings, `std::string`, `std::string_view` |
 | 07 | [Headers List](./07-headers-list) | exact entry-header selection |
 | 08 | [C++ Inventory](./08-cpp-inventory) | multiple C++ headers and reference writes |
-| 09 | [Go Module](./09-go-module) | `go.mod` and `build_flags.go` generation |
+| 09 | [Go Module](./09-go-module) | Go module metadata generation |
 | 10 | [Owner Return](./10-owner-return) | owned pointer returns and `Close` |
 | 11 | [Overloading](./11-overloading) | constructors and method overload dispatch |
 | 12 | [Default Arguments](./12-default-arguments) | native default-argument variants |
