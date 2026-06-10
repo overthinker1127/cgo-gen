@@ -97,26 +97,6 @@ impl PipelineContext {
         })
     }
 
-    pub fn is_known_model_type(&self, cpp_type: &str) -> bool {
-        let base = base_cpp_type_name(cpp_type);
-        self.known_model_types.iter().any(|candidate| {
-            let normalized = base_cpp_type_name(candidate);
-            normalized == base
-                || normalized.rsplit("::").next().unwrap_or(&normalized) == base
-                || base.rsplit("::").next().unwrap_or(&base) == normalized
-        })
-    }
-
-    pub fn is_known_enum_type(&self, cpp_type: &str) -> bool {
-        let base = enum_cpp_type_name(cpp_type);
-        self.known_enum_types.iter().any(|candidate| {
-            let normalized = enum_cpp_type_name(candidate);
-            normalized == base
-                || normalized.rsplit("::").next().unwrap_or(&normalized) == base
-                || base.rsplit("::").next().unwrap_or(&base) == normalized
-        })
-    }
-
     pub fn known_enum_go_type(&self, cpp_type: &str) -> Option<String> {
         let base = enum_cpp_type_name(cpp_type);
         self.known_enum_types
