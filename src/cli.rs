@@ -171,7 +171,14 @@ fn format_check_summary(summary: &CheckSummary<'_>) -> String {
         summary.abi_functions,
         skipped_count
     );
-    for (category, count) in skipped_category_counts(summary.skipped_declarations) {
+    output.push_str(&format_skipped_declarations(summary.skipped_declarations));
+
+    output
+}
+
+fn format_skipped_declarations(skipped_declarations: &[ir::SkippedDeclaration]) -> String {
+    let mut output = String::new();
+    for (category, count) in skipped_category_counts(skipped_declarations) {
         let category = skipped_category_for_label(category);
         output.push_str(&format!(
             "\n- {}: {} skipped; {}",
@@ -179,20 +186,19 @@ fn format_check_summary(summary: &CheckSummary<'_>) -> String {
         ));
     }
     output.push_str("\nskipped declaration details:");
-    for skipped in summary.skipped_declarations.iter().take(5) {
+    for skipped in skipped_declarations.iter().take(5) {
         let category = skipped_category(&skipped.reason);
         output.push_str(&format!(
             "\n- [{}] {}: {}\n  action: {}",
             category.label, skipped.cpp_name, skipped.reason, category.action
         ));
     }
-    if skipped_count > 5 {
+    if skipped_declarations.len() > 5 {
         output.push_str(&format!(
             "\n... and {} more skipped declarations",
-            skipped_count - 5
+            skipped_declarations.len() - 5
         ));
     }
-
     output
 }
 
@@ -262,14 +268,23 @@ fn format_generation_summary(summary: &generator::GenerationSummary) -> String {
     let file_label = if file_count == 1 { "file" } else { "files" };
     let output_dirs = summary.output_dirs();
 
-    match output_dirs.as_slice() {
+    let mut output = match output_dirs.as_slice() {
         [dir] => format!("generated {file_count} {file_label} in {}", dir.display()),
         [] => format!("generated {file_count} {file_label}"),
         dirs => format!(
             "generated {file_count} {file_label} in {} output dirs",
             dirs.len()
         ),
+    };
+
+    if !summary.skipped_declarations().is_empty() {
+        output.push_str(
+            "\nwarning: skipped declarations are omitted from generated wrappers and Go facades\nskip summary:",
+        );
+        output.push_str(&format_skipped_declarations(summary.skipped_declarations()));
     }
+
+    output
 }
 
 #[cfg(test)]
@@ -334,6 +349,29 @@ mod tests {
             format_generation_summary(&summary),
             "generated 4 files in examples/01-c-library/generated"
         );
+    }
+
+    #[test]
+    fn generation_summary_includes_skip_warning() {
+        let mut summary = GenerationSummary::default();
+        summary.record_for_test("generated/api_wrapper.go");
+        summary.record_skipped_for_test(SkippedDeclaration {
+            cpp_name: "set_callback".to_string(),
+            reason: "parameter `cb` type `void (*)(int)` uses a function pointer".to_string(),
+        });
+
+        let output = format_generation_summary(&summary);
+
+        assert!(output.contains("generated 1 file in generated"));
+        assert!(output.contains(
+            "warning: skipped declarations are omitted from generated wrappers and Go facades"
+        ));
+        assert!(output.contains(
+            "- function pointer: 1 skipped; use a named callback typedef or an adapter function"
+        ));
+        assert!(output.contains(
+            "[function pointer] set_callback: parameter `cb` type `void (*)(int)` uses a function pointer"
+        ));
     }
 
     #[test]

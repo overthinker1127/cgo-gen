@@ -138,7 +138,7 @@ pub struct SupportMetadata {
     pub skipped_declarations: Vec<SkippedDeclaration>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SkippedDeclaration {
     pub cpp_name: String,
     pub reason: String,

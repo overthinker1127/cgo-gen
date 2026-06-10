@@ -26,6 +26,7 @@ struct SyntheticOpaqueDelete {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct GenerationSummary {
     generated_files: BTreeSet<PathBuf>,
+    skipped_declarations: Vec<ir::SkippedDeclaration>,
 }
 
 impl GenerationSummary {
@@ -42,8 +43,17 @@ impl GenerationSummary {
             .collect()
     }
 
+    pub fn skipped_declarations(&self) -> &[ir::SkippedDeclaration] {
+        &self.skipped_declarations
+    }
+
     fn record(&mut self, path: PathBuf) {
         self.generated_files.insert(path);
+    }
+
+    fn record_skipped_declarations(&mut self, skipped_declarations: &[ir::SkippedDeclaration]) {
+        self.skipped_declarations
+            .extend(skipped_declarations.iter().cloned());
     }
 
     #[cfg(test)]
@@ -51,8 +61,14 @@ impl GenerationSummary {
         self.record(path.into());
     }
 
+    #[cfg(test)]
+    pub(crate) fn record_skipped_for_test(&mut self, skipped: ir::SkippedDeclaration) {
+        self.skipped_declarations.push(skipped);
+    }
+
     fn merge(&mut self, other: GenerationSummary) {
         self.generated_files.extend(other.generated_files);
+        self.skipped_declarations.extend(other.skipped_declarations);
     }
 }
 
@@ -335,6 +351,7 @@ fn generate_with_opaque_ownership(
             .with_context(|| format!("failed to write ir dump: {}", ir_path.display()))?;
         summary.record(ir_path);
     }
+    summary.record_skipped_declarations(&ir.support.skipped_declarations);
     Ok(summary)
 }
 
