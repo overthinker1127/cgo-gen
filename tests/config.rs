@@ -824,6 +824,100 @@ output:
 }
 
 #[test]
+fn expands_env_tokens_in_input_and_output_paths() {
+    let dir = temp_test_dir("env_path_entries");
+    fs::create_dir_all(dir.join("sdk/include")).unwrap();
+    fs::create_dir_all(dir.join("generated")).unwrap();
+    fs::write(dir.join("sdk/include/foo.hpp"), "int foo();").unwrap();
+    fs::write(dir.join("sdk/include/bar.hpp"), "int bar();").unwrap();
+
+    let input_root = format!("C_GO_TEST_INPUT_ROOT_{}", std::process::id());
+    let header_root = format!("C_GO_TEST_HEADER_ROOT_{}", std::process::id());
+    let output_root = format!("C_GO_TEST_OUTPUT_ROOT_{}", std::process::id());
+    let _input_root = set_test_env(input_root.clone(), "sdk");
+    let _header_root = set_test_env(header_root.clone(), "sdk/include");
+    let _output_root = set_test_env(output_root.clone(), "generated");
+
+    let dirs_config_path = dir.join("dirs.yaml");
+    fs::write(
+        &dirs_config_path,
+        format!(
+            r#"
+version: 1
+input:
+  dirs:
+    - ${{{input_root}}}/include
+output:
+  dir: $({output_root})/dirs
+"#
+        ),
+    )
+    .unwrap();
+
+    let dirs_config = Config::load(&dirs_config_path).unwrap();
+    assert_eq!(
+        dirs_config.input.dirs,
+        vec![dir.join("sdk/include").canonicalize().unwrap()]
+    );
+    assert_eq!(dirs_config.output.dir, dir.join("generated/dirs"));
+
+    let headers_config_path = dir.join("headers.yaml");
+    fs::write(
+        &headers_config_path,
+        format!(
+            r#"
+version: 1
+input:
+  headers:
+    - ${header_root}/bar.hpp
+output:
+  dir: ${output_root}/headers
+"#
+        ),
+    )
+    .unwrap();
+
+    let headers_config = Config::load(&headers_config_path).unwrap();
+    assert_eq!(
+        headers_config.input.headers,
+        vec![dir.join("sdk/include/bar.hpp").canonicalize().unwrap()]
+    );
+    assert_eq!(headers_config.output.dir, dir.join("generated/headers"));
+}
+
+#[test]
+fn rejects_missing_env_tokens_in_input_paths() {
+    let dir = temp_test_dir("missing_env_path_entries");
+    fs::create_dir_all(dir.join("include")).unwrap();
+    fs::write(dir.join("include/foo.hpp"), "int foo();").unwrap();
+
+    let missing = format!("C_GO_TEST_MISSING_INPUT_PATH_{}", std::process::id());
+    unsafe {
+        env::remove_var(&missing);
+    }
+
+    let config_path = dir.join("cppgo-wrap.yaml");
+    fs::write(
+        &config_path,
+        format!(
+            r#"
+version: 1
+input:
+  dirs:
+    - ${missing}/include
+output:
+  dir: gen
+"#
+        ),
+    )
+    .unwrap();
+
+    let error = Config::load(&config_path).unwrap_err().to_string();
+    assert!(error.contains("input.dirs"));
+    assert!(error.contains(&missing));
+}
+
+#[test]
 fn rejects_missing_env_tokens_in_clang_args() {
     let mut dir = env::temp_dir();
     dir.push(format!(

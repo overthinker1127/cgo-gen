@@ -231,7 +231,7 @@ Important caveats:
 
 - if you use multi-header generation, leave `output.header`, `output.source`, and `output.ir` at their defaults
 - generated C symbol naming is fixed in source and is not configurable via YAML
-- `input.dirs`, `input.headers`, `input.clang_args`, and `input.ldflags` resolve relative paths from the config file directory
+- `input.dirs`, `input.headers`, `input.clang_args`, `input.ldflags`, and `output.dir` resolve relative paths from the config file directory
 - use `input.owner` only when a pointer return actually transfers ownership, for example a factory method that returns `new`-allocated objects
 - `input.owner` matches by qualified callable name such as `WidgetFactory::Create`; if the same name is overloaded, every matching overload is treated as owned
 - env expansion supports `$VAR`, `$(VAR)`, and `${VAR}` only

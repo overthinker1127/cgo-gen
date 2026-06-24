@@ -317,13 +317,23 @@ fn normalize_clang_config_path(path: &Path) -> String {
     }
 }
 
-fn resolve_path(path: &mut PathBuf, base_dir: &Path) {
+fn resolve_path(path: &mut PathBuf, base_dir: &Path, context: &str) -> Result<()> {
+    expand_env_vars_in_path(path, context)?;
     if path.is_relative() {
         *path = base_dir.join(&*path);
     }
     if let Ok(canonical) = path.canonicalize() {
         *path = canonical;
     }
+    Ok(())
+}
+
+fn expand_env_vars_in_path(path: &mut PathBuf, context: &str) -> Result<()> {
+    let value = path
+        .to_str()
+        .with_context(|| format!("{context} path is not valid unicode: {}", path.display()))?;
+    *path = PathBuf::from(expand_env_vars_in_str(value, context)?);
+    Ok(())
 }
 
 fn resolve_config_base_dir(config_path: &Path) -> PathBuf {
@@ -427,13 +437,14 @@ impl Config {
     fn resolve_relative_paths(&mut self, config_path: &Path) -> Result<()> {
         let base_dir = resolve_config_base_dir(config_path);
         for dir in &mut self.input.dirs {
-            resolve_path(dir, &base_dir);
+            resolve_path(dir, &base_dir, "input.dirs")?;
         }
         for header in &mut self.input.headers {
-            resolve_path(header, &base_dir);
+            resolve_path(header, &base_dir, "input.headers")?;
         }
         resolve_relative_clang_args(&mut self.input.clang_args, &base_dir)?;
         resolve_ldflags(&mut self.input.ldflags, &base_dir)?;
+        expand_env_vars_in_path(&mut self.output.dir, "output.dir")?;
         if self.output.dir.is_relative() {
             self.output.dir = base_dir.join(&self.output.dir);
         }
