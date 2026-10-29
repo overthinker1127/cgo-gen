@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use anyhow::{Context, Result, bail};
+
 use crate::{
     codegen::ir_norm,
     domain::kind::IrTypeKind,
@@ -10,7 +12,7 @@ use crate::{
 use super::{
     AnalyzedFacadeClass, DispatcherKey, OverloadDispatcher, RenderedCallPrep, go_model_return_type,
     go_nil_return_stmt, go_param_type, go_pointer_return_type, go_return_sig,
-    is_model_wrapper_return, model_return_has_wrapper_helpers, model_return_is_owned,
+    model_return_has_wrapper_helpers, model_return_is_owned,
     model_return_uses_inline_owned_literal, support::*,
 };
 
@@ -30,7 +32,7 @@ pub(super) fn render_free_function(
     function: &IrFunction,
     covered_handles: &BTreeSet<String>,
     owned_opaque_value_handles: &BTreeSet<String>,
-) -> String {
+) -> Result<String> {
     if has_callback_param(function.params.iter()) {
         return render_callback_free_function(
             config,
@@ -40,13 +42,13 @@ pub(super) fn render_free_function(
         );
     }
     let params_list = function.params.iter().collect::<Vec<_>>();
-    let params = render_param_list(config, &params_list);
+    let params = render_param_list(config, &params_list)?;
     let prep = render_call_prep(
         config,
         &params_list,
         covered_handles,
         owned_opaque_value_handles,
-    );
+    )?;
     let call = format!("C.{}({})", function.name, prep.args.join(", "));
     let go_name = go_facade_export_name(function);
     let borrow_root = infer_borrow_root_expr(
@@ -73,9 +75,9 @@ pub(super) fn render_free_function(
         borrow_root,
         covered_handles,
         owned_opaque_value_handles,
-    ));
+    )?);
     out.push_str("}\n");
-    out
+    Ok(out)
 }
 
 pub(super) fn covered_dispatcher_function_names(
@@ -106,8 +108,8 @@ pub(super) fn collect_free_function_dispatchers<'a>(
 
     by_export
         .into_iter()
-        .filter_map(|(export_name, mut group)| {
-            build_dispatcher(config, export_name, &mut group, go_facade_export_name)
+        .filter_map(|(export_name, group)| {
+            build_dispatcher(config, export_name, group, go_facade_export_name)
         })
         .collect()
 }
@@ -131,8 +133,8 @@ pub(super) fn collect_method_dispatchers<'a>(
 
     by_export
         .into_iter()
-        .filter_map(|(export_name, mut group)| {
-            build_dispatcher(config, export_name, &mut group, go_method_export_name)
+        .filter_map(|(export_name, group)| {
+            build_dispatcher(config, export_name, group, go_method_export_name)
         })
         .collect()
 }
@@ -140,19 +142,19 @@ pub(super) fn collect_method_dispatchers<'a>(
 fn build_dispatcher<'a>(
     config: &PipelineContext,
     export_name: String,
-    group: &mut Vec<&'a IrFunction>,
+    mut group: Vec<&'a IrFunction>,
     typed_export_name: fn(&IrFunction) -> String,
 ) -> Option<OverloadDispatcher<'a>> {
     if group.len() < 2 {
         return None;
     }
-    if !dispatcher_group_is_safe(config, group) {
+    if !dispatcher_group_is_safe(config, &group) {
         return None;
     }
     group.sort_by_key(|function| typed_export_name(function));
     Some(OverloadDispatcher {
         export_name,
-        functions: group.clone(),
+        functions: group,
     })
 }
 
@@ -219,7 +221,17 @@ fn dispatcher_zero_return(config: &PipelineContext, function: &IrFunction) -> Op
         IrTypeKind::FixedByteArray | IrTypeKind::FixedArray | IrTypeKind::FixedModelArray => {
             return Some("nil, ".to_string());
         }
-        _ => {}
+        IrTypeKind::Primitive
+        | IrTypeKind::Enum
+        | IrTypeKind::Pointer
+        | IrTypeKind::Reference
+        | IrTypeKind::Opaque
+        | IrTypeKind::Callback
+        | IrTypeKind::ExternStructReference
+        | IrTypeKind::ExternStructPointer
+        | IrTypeKind::ModelReference
+        | IrTypeKind::ModelPointer
+        | IrTypeKind::ModelValue => {}
     }
     let sig = go_return_sig(config, &function.returns);
     if sig.starts_with('*') || sig == "unsafe.Pointer" {
@@ -235,7 +247,7 @@ pub(super) fn render_free_function_dispatcher(
     dispatcher: &OverloadDispatcher<'_>,
     covered_handles: &BTreeSet<String>,
     owned_opaque_value_handles: &BTreeSet<String>,
-) -> String {
+) -> Result<String> {
     render_dispatcher(
         config,
         dispatcher,
@@ -251,7 +263,7 @@ pub(super) fn render_method_dispatcher(
     dispatcher: &OverloadDispatcher<'_>,
     covered_handles: &BTreeSet<String>,
     owned_opaque_value_handles: &BTreeSet<String>,
-) -> String {
+) -> Result<String> {
     let receiver = receiver_name(&class.go_name);
     render_dispatcher(
         config,
@@ -268,10 +280,14 @@ fn render_dispatcher(
     receiver: Option<(&str, &str)>,
     covered_handles: &BTreeSet<String>,
     owned_opaque_value_handles: &BTreeSet<String>,
-) -> String {
-    let first = dispatcher.functions[0];
+) -> Result<String> {
+    let first = dispatcher
+        .functions
+        .first()
+        .context("overload dispatcher has no candidates")?;
     let direct_sig = go_return_sig(config, &first.returns);
-    let dispatcher_sig = dispatcher_return_sig(&direct_sig).unwrap();
+    let dispatcher_sig = dispatcher_return_sig(&direct_sig)
+        .with_context(|| format!("unsupported overload return type in {}", first.cpp_name))?;
     let display_name = receiver
         .map(|(_, class_name)| format!("{class_name}.{}", dispatcher.export_name))
         .unwrap_or_else(|| dispatcher.export_name.clone());
@@ -296,11 +312,11 @@ fn render_dispatcher(
         let error_return =
             dispatcher_error_return(config, first, &format!("{class_name} receiver is nil"));
         out.push_str(&format!(
-            "    if {receiver_name} == nil || {receiver_name}.ptr == nil {{\n        {error_return}\n    }}\n"
-        ));
+        "    if {receiver_name} == nil || {receiver_name}.ptr == nil {{\n        {error_return}\n    }}\n"
+    ));
         out.push_str(&format!(
-            "    if {receiver_name}.root != nil && *{receiver_name}.root {{\n        panic(\"{class_name} handle is closed\")\n    }}\n"
-        ));
+        "    if {receiver_name}.root != nil && *{receiver_name}.root {{\n        panic(\"{class_name} handle is closed\")\n    }}\n"
+    ));
     }
 
     let mut by_arity = BTreeMap::<usize, Vec<&IrFunction>>::new();
@@ -321,7 +337,7 @@ fn render_dispatcher(
                 receiver,
                 covered_handles,
                 owned_opaque_value_handles,
-            ));
+            )?);
         }
     }
     out.push_str("    }\n");
@@ -332,7 +348,7 @@ fn render_dispatcher(
     );
     out.push_str(&format!("    {error_return}\n"));
     out.push_str("}\n");
-    out
+    Ok(out)
 }
 
 fn render_dispatcher_candidate(
@@ -341,7 +357,7 @@ fn render_dispatcher_candidate(
     receiver: Option<(&str, &str)>,
     covered_handles: &BTreeSet<String>,
     owned_opaque_value_handles: &BTreeSet<String>,
-) -> String {
+) -> Result<String> {
     let params = dispatcher_params(function);
     let mut out = String::new();
     out.push_str("        {\n");
@@ -349,7 +365,12 @@ fn render_dispatcher_candidate(
     for (index, param) in params.iter().enumerate() {
         let arg_name = format!("arg{index}");
         let ok_name = format!("ok{index}");
-        let go_type = go_param_type(config, &param.ty).unwrap();
+        let go_type = go_param_type(config, &param.ty).with_context(|| {
+            format!(
+                "unsupported parameter {} in {}",
+                param.name, function.cpp_name
+            )
+        })?;
         out.push_str(&format!(
             "            {arg_name}, {ok_name} := args[{index}].({go_type})\n"
         ));
@@ -368,12 +389,12 @@ fn render_dispatcher_candidate(
             receiver,
             covered_handles,
             owned_opaque_value_handles,
-        ),
+        )?,
         12,
     ));
     out.push_str("            }\n");
     out.push_str("        }\n");
-    out
+    Ok(out)
 }
 
 fn render_dispatcher_inline_return(
@@ -382,7 +403,7 @@ fn render_dispatcher_inline_return(
     receiver: Option<(&str, &str)>,
     covered_handles: &BTreeSet<String>,
     owned_opaque_value_handles: &BTreeSet<String>,
-) -> String {
+) -> Result<String> {
     let params = dispatcher_params(function)
         .into_iter()
         .enumerate()
@@ -403,14 +424,14 @@ fn render_dispatcher_inline_return(
             param_offset,
             covered_handles,
             owned_opaque_value_handles,
-        )
+        )?
     } else {
         render_call_prep(
             config,
             &param_refs,
             covered_handles,
             owned_opaque_value_handles,
-        )
+        )?
     };
     let call_name = if has_callback {
         format!("C.{}_bridge", function.name)
@@ -450,8 +471,8 @@ fn render_dispatcher_inline_return(
             owned_opaque_value_handles,
         },
         ReturnMode::Dispatcher,
-    ));
-    out
+    )?);
+    Ok(out)
 }
 
 fn dispatcher_error_return(
@@ -469,10 +490,10 @@ pub(super) fn render_callback_method(
     function: &IrFunction,
     covered_handles: &BTreeSet<String>,
     owned_opaque_value_handles: &BTreeSet<String>,
-) -> String {
+) -> Result<String> {
     let receiver = receiver_name(&class.go_name);
     let method_params = function.params.iter().skip(1).collect::<Vec<_>>();
-    let params = render_param_list(config, &method_params);
+    let params = render_param_list(config, &method_params)?;
     let prep = render_callback_call_prep(
         config,
         function,
@@ -480,7 +501,7 @@ pub(super) fn render_callback_method(
         1,
         covered_handles,
         owned_opaque_value_handles,
-    );
+    )?;
     let call = format!(
         "C.{}_bridge({})",
         function.name,
@@ -507,9 +528,9 @@ pub(super) fn render_callback_method(
         go_nil_return_stmt(&function.returns)
     ));
     out.push_str(&format!(
-        "    if {receiver}.root != nil && *{receiver}.root {{\n        panic(\"{} handle is closed\")\n    }}\n",
-        class.go_name
-    ));
+    "    if {receiver}.root != nil && *{receiver}.root {{\n        panic(\"{} handle is closed\")\n    }}\n",
+    class.go_name
+));
     out.push_str(&indented_lines(&prep.setup_lines));
     out.push_str(&indented_lines(&prep.defer_lines));
     out.push_str(&render_go_call_return(
@@ -520,9 +541,9 @@ pub(super) fn render_callback_method(
         Some(format!("{receiver}.root")),
         covered_handles,
         owned_opaque_value_handles,
-    ));
+    )?);
     out.push_str("}\n");
-    out
+    Ok(out)
 }
 
 fn render_callback_free_function(
@@ -530,9 +551,9 @@ fn render_callback_free_function(
     function: &IrFunction,
     covered_handles: &BTreeSet<String>,
     owned_opaque_value_handles: &BTreeSet<String>,
-) -> String {
+) -> Result<String> {
     let params_list = function.params.iter().collect::<Vec<_>>();
-    let params = render_param_list(config, &params_list);
+    let params = render_param_list(config, &params_list)?;
     let prep = render_callback_call_prep(
         config,
         function,
@@ -540,7 +561,7 @@ fn render_callback_free_function(
         0,
         covered_handles,
         owned_opaque_value_handles,
-    );
+    )?;
     let call = format!("C.{}_bridge({})", function.name, prep.args.join(", "));
     let go_name = go_facade_export_name(function);
     let borrow_root = infer_borrow_root_expr(
@@ -567,9 +588,9 @@ fn render_callback_free_function(
         borrow_root,
         covered_handles,
         owned_opaque_value_handles,
-    ));
+    )?);
     out.push_str("}\n");
-    out
+    Ok(out)
 }
 
 fn render_callback_call_prep(
@@ -579,7 +600,7 @@ fn render_callback_call_prep(
     param_offset: usize,
     covered_handles: &BTreeSet<String>,
     owned_opaque_value_handles: &BTreeSet<String>,
-) -> RenderedCallPrep {
+) -> Result<RenderedCallPrep> {
     let mut prep = RenderedCallPrep::default();
 
     for (index, param) in params.iter().enumerate() {
@@ -634,13 +655,15 @@ fn render_callback_call_prep(
                     owned_opaque_value_handles,
                 );
             }
-            IrTypeKind::Reference => render_reference_arg(&mut prep, &param.ty, &param.name, index),
+            IrTypeKind::Reference => {
+                render_reference_arg(&mut prep, &param.ty, &param.name, index)?
+            }
             IrTypeKind::Pointer => render_pointer_arg(&mut prep, &param.ty, &param.name, index),
             IrTypeKind::ExternStructReference => {
-                render_extern_struct_arg(&mut prep, &param.ty, &param.name, index, true)
+                render_extern_struct_arg(&mut prep, &param.ty, &param.name, index, true)?
             }
             IrTypeKind::ExternStructPointer => {
-                render_extern_struct_arg(&mut prep, &param.ty, &param.name, index, false)
+                render_extern_struct_arg(&mut prep, &param.ty, &param.name, index, false)?
             }
             IrTypeKind::ModelReference | IrTypeKind::ModelPointer | IrTypeKind::ModelValue => {
                 render_model_arg(
@@ -653,25 +676,36 @@ fn render_callback_call_prep(
                     owned_opaque_value_handles,
                 )
             }
-            _ => prep.args.push(render_c_arg(&param.ty, &param.name)),
+            IrTypeKind::Void
+            | IrTypeKind::Primitive
+            | IrTypeKind::Enum
+            | IrTypeKind::Opaque
+            | IrTypeKind::Callback => {
+                prep.args.push(render_c_arg(&param.ty, &param.name)?);
+            }
         }
     }
 
-    prep
+    Ok(prep)
 }
 
-pub(super) fn render_param_list(config: &PipelineContext, params: &[&ir_norm::IrParam]) -> String {
-    params
+pub(super) fn render_param_list(
+    config: &PipelineContext,
+    params: &[&ir_norm::IrParam],
+) -> Result<String> {
+    let params = params
         .iter()
         .map(|param| {
-            format!(
-                "{} {}",
-                param.name,
-                go_param_type(config, &param.ty).unwrap()
-            )
+            let go_type = go_param_type(config, &param.ty).with_context(|| {
+                format!(
+                    "unsupported parameter {}: {}",
+                    param.name, param.ty.cpp_type
+                )
+            })?;
+            Ok(format!("{} {go_type}", param.name))
         })
-        .collect::<Vec<_>>()
-        .join(", ")
+        .collect::<Result<Vec<_>>>()?;
+    Ok(params.join(", "))
 }
 
 pub(super) fn render_call_prep(
@@ -679,7 +713,7 @@ pub(super) fn render_call_prep(
     params: &[&ir_norm::IrParam],
     covered_handles: &BTreeSet<String>,
     owned_opaque_value_handles: &BTreeSet<String>,
-) -> RenderedCallPrep {
+) -> Result<RenderedCallPrep> {
     let mut prep = RenderedCallPrep::default();
 
     for (index, param) in params.iter().enumerate() {
@@ -724,13 +758,15 @@ pub(super) fn render_call_prep(
                     owned_opaque_value_handles,
                 );
             }
-            IrTypeKind::Reference => render_reference_arg(&mut prep, &param.ty, &param.name, index),
+            IrTypeKind::Reference => {
+                render_reference_arg(&mut prep, &param.ty, &param.name, index)?
+            }
             IrTypeKind::Pointer => render_pointer_arg(&mut prep, &param.ty, &param.name, index),
             IrTypeKind::ExternStructReference => {
-                render_extern_struct_arg(&mut prep, &param.ty, &param.name, index, true)
+                render_extern_struct_arg(&mut prep, &param.ty, &param.name, index, true)?
             }
             IrTypeKind::ExternStructPointer => {
-                render_extern_struct_arg(&mut prep, &param.ty, &param.name, index, false)
+                render_extern_struct_arg(&mut prep, &param.ty, &param.name, index, false)?
             }
             IrTypeKind::ModelReference | IrTypeKind::ModelPointer | IrTypeKind::ModelValue => {
                 render_model_arg(
@@ -743,11 +779,17 @@ pub(super) fn render_call_prep(
                     owned_opaque_value_handles,
                 )
             }
-            _ => prep.args.push(render_c_arg(&param.ty, &param.name)),
+            IrTypeKind::Void
+            | IrTypeKind::Primitive
+            | IrTypeKind::Enum
+            | IrTypeKind::Opaque
+            | IrTypeKind::Callback => {
+                prep.args.push(render_c_arg(&param.ty, &param.name)?);
+            }
         }
     }
 
-    prep
+    Ok(prep)
 }
 
 fn render_fixed_length_guard(name: &str, ty: &IrType) -> Vec<String> {
@@ -798,9 +840,14 @@ fn render_extern_struct_arg(
     name: &str,
     index: usize,
     require_non_nil: bool,
-) {
+) -> Result<()> {
     let c_name = format!("cArg{index}");
-    let go_type = extern_struct_go_type(ty).expect("external struct params must be prefiltered");
+    let go_type = extern_struct_go_type(ty).with_context(|| {
+        format!(
+            "unsupported external struct parameter {name}: {}",
+            ty.cpp_type
+        )
+    })?;
     if require_non_nil {
         prep.setup_lines.push(format!("if {name} == nil {{"));
         prep.setup_lines
@@ -810,21 +857,28 @@ fn render_extern_struct_arg(
     prep.setup_lines
         .push(format!("{c_name} := ({go_type})(unsafe.Pointer({name}))"));
     prep.args.push(c_name);
+    Ok(())
 }
 
-fn render_reference_arg(prep: &mut RenderedCallPrep, ty: &IrType, name: &str, index: usize) {
-    let go_type =
-        go_type_for_reference(ty).expect("primitive references must be filtered before rendering");
+fn render_reference_arg(
+    prep: &mut RenderedCallPrep,
+    ty: &IrType,
+    name: &str,
+    index: usize,
+) -> Result<()> {
+    let go_type = go_type_for_reference(ty)
+        .with_context(|| format!("unsupported reference parameter {name}: {}", ty.cpp_type))?;
     let c_name = format!("cArg{index}");
     prep.setup_lines.push(format!("if {name} == nil {{"));
     prep.setup_lines
         .push(format!("    panic(\"{name} reference is nil\")"));
     prep.setup_lines.push("}".to_string());
     prep.setup_lines
-        .push(format!("{c_name} := {}(*{})", cgo_cast_type(ty), name));
+        .push(format!("{c_name} := {}(*{})", cgo_cast_type(ty)?, name));
     prep.post_call_lines
         .push(format!("*{} = {}({})", name, go_type, c_name));
     prep.args.push(format!("&{c_name}"));
+    Ok(())
 }
 
 fn render_fixed_model_array_arg(
@@ -891,8 +945,8 @@ fn render_fixed_model_array_elem_ptr_expr(
     raw_expr.to_string()
 }
 
-fn render_c_arg(ty: &IrType, name: &str) -> String {
-    format!("{}({})", cgo_cast_type(ty), name)
+fn render_c_arg(ty: &IrType, name: &str) -> Result<String> {
+    Ok(format!("{}({})", cgo_cast_type(ty)?, name))
 }
 
 pub(super) fn indented_lines(lines: &[String]) -> String {
@@ -1152,7 +1206,7 @@ pub(super) fn render_go_call_return(
     borrow_root: Option<String>,
     covered_handles: &BTreeSet<String>,
     owned_opaque_value_handles: &BTreeSet<String>,
-) -> String {
+) -> Result<String> {
     render_go_call_return_with_mode(
         config,
         function,
@@ -1175,9 +1229,9 @@ fn render_go_call_return_with_mode(
     borrow_root: Option<String>,
     handles: ReturnHandleContext<'_>,
     mode: ReturnMode,
-) -> String {
+) -> Result<String> {
     let ty = &function.returns;
-    match ty.kind {
+    Ok(match ty.kind {
         IrTypeKind::Void => {
             let mut out = format!("    {call}\n");
             out.push_str(&indented_lines(post_call_lines));
@@ -1190,17 +1244,17 @@ fn render_go_call_return_with_mode(
             let mut out = format!("    raw := {call}\n");
             out.push_str(&indented_lines(post_call_lines));
             out.push_str(&format!(
-                "    if raw == nil {{\n        return \"\", errors.New(\"wrapper returned nil string\")\n    }}\n    defer C.{}_string_free(raw)\n    return C.GoString(raw), nil\n",
-                crate::config::WRAPPER_PREFIX
-            ));
+            "    if raw == nil {{\n        return \"\", errors.New(\"wrapper returned nil string\")\n    }}\n    defer C.{}_string_free(raw)\n    return C.GoString(raw), nil\n",
+            crate::config::WRAPPER_PREFIX
+        ));
             out
         }
         IrTypeKind::CString => {
             let mut out = format!("    raw := {call}\n");
             out.push_str(&indented_lines(post_call_lines));
             out.push_str(
-                "    if raw == nil {\n        return \"\", errors.New(\"wrapper returned nil string\")\n    }\n    return C.GoString(raw), nil\n",
-            );
+            "    if raw == nil {\n        return \"\", errors.New(\"wrapper returned nil string\")\n    }\n    return C.GoString(raw), nil\n",
+        );
             out
         }
         IrTypeKind::FixedByteArray => {
@@ -1208,9 +1262,9 @@ fn render_go_call_return_with_mode(
             let mut out = format!("    raw := {call}\n");
             out.push_str(&indented_lines(post_call_lines));
             out.push_str(&format!(
-                "    if raw == nil {{\n        return nil, errors.New(\"wrapper returned nil byte array\")\n    }}\n    defer C.{prefix}_byte_array_free(raw)\n    return C.GoBytes(unsafe.Pointer(raw), C.int({n})), nil\n",
-                prefix = crate::config::WRAPPER_PREFIX
-            ));
+            "    if raw == nil {{\n        return nil, errors.New(\"wrapper returned nil byte array\")\n    }}\n    defer C.{prefix}_byte_array_free(raw)\n    return C.GoBytes(unsafe.Pointer(raw), C.int({n})), nil\n",
+            prefix = crate::config::WRAPPER_PREFIX
+        ));
             out
         }
         IrTypeKind::FixedArray => {
@@ -1220,9 +1274,9 @@ fn render_go_call_return_with_mode(
             let mut out = format!("    raw := {call}\n");
             out.push_str(&indented_lines(post_call_lines));
             out.push_str(&format!(
-                "    if raw == nil {{\n        return nil, errors.New(\"wrapper returned nil array\")\n    }}\n    defer C.{prefix}_array_free(unsafe.Pointer(raw))\n    cSlice := (*[{n}]{c_elem})(unsafe.Pointer(raw))\n    result := make([]{go_elem}, {n})\n    for i := range result {{\n        result[i] = {go_elem}(cSlice[i])\n    }}\n    return result, nil\n",
-                prefix = crate::config::WRAPPER_PREFIX
-            ));
+            "    if raw == nil {{\n        return nil, errors.New(\"wrapper returned nil array\")\n    }}\n    defer C.{prefix}_array_free(unsafe.Pointer(raw))\n    cSlice := (*[{n}]{c_elem})(unsafe.Pointer(raw))\n    result := make([]{go_elem}, {n})\n    for i := range result {{\n        result[i] = {go_elem}(cSlice[i])\n    }}\n    return result, nil\n",
+            prefix = crate::config::WRAPPER_PREFIX
+        ));
             out
         }
         IrTypeKind::FixedModelArray => {
@@ -1233,17 +1287,19 @@ fn render_go_call_return_with_mode(
             out.push_str(&indented_lines(post_call_lines));
             if config.known_model_projection(&ty.cpp_type).is_some() {
                 out.push_str(&format!(
-                    "    if raw == nil {{\n        return nil, errors.New(\"wrapper returned nil model array\")\n    }}\n    defer C.free(unsafe.Pointer(raw))\n    cSlice := (*[{n}]*C.{c_handle})(unsafe.Pointer(raw))\n    result := make([]*{go_name}, {n})\n    for i := range result {{\n        result[i] = newOwned{go_name}(cSlice[i])\n    }}\n    return result, nil\n"
-                ));
+                "    if raw == nil {{\n        return nil, errors.New(\"wrapper returned nil model array\")\n    }}\n    defer C.free(unsafe.Pointer(raw))\n    cSlice := (*[{n}]*C.{c_handle})(unsafe.Pointer(raw))\n    result := make([]*{go_name}, {n})\n    for i := range result {{\n        result[i] = newOwned{go_name}(cSlice[i])\n    }}\n    return result, nil\n"
+            ));
             } else {
                 out.push_str(&format!(
-                    "    if raw == nil {{\n        return nil, errors.New(\"wrapper returned nil model array\")\n    }}\n    defer C.free(unsafe.Pointer(raw))\n    cSlice := (*[{n}]*C.{c_handle})(unsafe.Pointer(raw))\n    result := make([]*{go_name}, {n})\n    for i := range result {{\n        result[i] = &{go_name}{{ptr: cSlice[i]}}\n    }}\n    return result, nil\n"
-                ));
+                "    if raw == nil {{\n        return nil, errors.New(\"wrapper returned nil model array\")\n    }}\n    defer C.free(unsafe.Pointer(raw))\n    cSlice := (*[{n}]*C.{c_handle})(unsafe.Pointer(raw))\n    result := make([]*{go_name}, {n})\n    for i := range result {{\n        result[i] = &{go_name}{{ptr: cSlice[i]}}\n    }}\n    return result, nil\n"
+            ));
             }
             out
         }
         IrTypeKind::Pointer => {
-            let go_type = go_pointer_return_type(ty).unwrap();
+            let go_type = go_pointer_return_type(ty).with_context(|| {
+                format!("unsupported pointer return type in {}", function.cpp_name)
+            })?;
             let mut out = format!("    raw := {call}\n");
             out.push_str(&indented_lines(post_call_lines));
             let suffix = dispatcher_success_suffix(mode);
@@ -1252,7 +1308,7 @@ fn render_go_call_return_with_mode(
             ));
             out
         }
-        _ if is_model_wrapper_return(ty) => {
+        IrTypeKind::ModelReference | IrTypeKind::ModelPointer | IrTypeKind::ModelValue => {
             let go_name = go_model_return_type(config, ty);
             let mut out = format!("    raw := {call}\n");
             out.push_str(&indented_lines(post_call_lines));
@@ -1276,18 +1332,19 @@ fn render_go_call_return_with_mode(
                         format!("newBorrowed{go_name}({ptr_expr}, {root_expr})")
                     };
                     out.push_str(&format!(
-                        "    if raw == nil {{\n        return nil{suffix}\n    }}\n    return {helper}{suffix}\n"
-                    ));
+                    "    if raw == nil {{\n        return nil{suffix}\n    }}\n    return {helper}{suffix}\n"
+                ));
                 } else {
                     out.push_str(&format!(
-                        "    if raw == nil {{\n        return nil{suffix}\n    }}\n    return &{go_name}{{ptr: {ptr_expr}}}{suffix}\n"
-                    ));
+                    "    if raw == nil {{\n        return nil{suffix}\n    }}\n    return &{go_name}{{ptr: {ptr_expr}}}{suffix}\n"
+                ));
                 }
             }
             out
         }
-        _ => {
-            let go_type = go_value_type(config, ty).unwrap();
+        IrTypeKind::Primitive | IrTypeKind::Enum => {
+            let go_type = go_value_type(config, ty)
+                .with_context(|| format!("unsupported return type in {}", function.cpp_name))?;
             let mut out = String::new();
             if go_type == "bool" {
                 let suffix = dispatcher_success_suffix(mode);
@@ -1304,7 +1361,18 @@ fn render_go_call_return_with_mode(
             }
             out
         }
-    }
+        IrTypeKind::Reference
+        | IrTypeKind::Opaque
+        | IrTypeKind::Callback
+        | IrTypeKind::ExternStructReference
+        | IrTypeKind::ExternStructPointer => {
+            bail!(
+                "unsupported return type {} in {}",
+                ty.cpp_type,
+                function.cpp_name
+            );
+        }
+    })
 }
 
 fn dispatcher_success_suffix(mode: ReturnMode) -> &'static str {

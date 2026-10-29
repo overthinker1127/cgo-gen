@@ -1,5 +1,7 @@
 use std::{collections::BTreeMap, path::Path};
 
+use anyhow::{Context, Result};
+
 use crate::{
     codegen::ir_norm,
     domain::kind::{IrFunctionKind, IrTypeKind},
@@ -26,7 +28,19 @@ pub(super) fn go_type_for_ir(ty: &IrType) -> Option<&'static str> {
         IrTypeKind::Primitive => {
             primitive_go_type(&ty.cpp_type).or_else(|| primitive_go_type(&ty.c_type))
         }
-        _ => None,
+        IrTypeKind::Void
+        | IrTypeKind::FixedByteArray
+        | IrTypeKind::FixedArray
+        | IrTypeKind::FixedModelArray
+        | IrTypeKind::Pointer
+        | IrTypeKind::Reference
+        | IrTypeKind::Opaque
+        | IrTypeKind::Callback
+        | IrTypeKind::ExternStructReference
+        | IrTypeKind::ExternStructPointer
+        | IrTypeKind::ModelReference
+        | IrTypeKind::ModelPointer
+        | IrTypeKind::ModelValue => None,
     }
 }
 
@@ -44,11 +58,11 @@ pub(super) fn go_type_for_reference(ty: &IrType) -> Option<&'static str> {
     primitive_go_type(&ty.cpp_type).or_else(|| primitive_go_type(&ty.c_type))
 }
 
-pub(super) fn cgo_cast_type(ty: &IrType) -> &'static str {
+pub(super) fn cgo_cast_type(ty: &IrType) -> Result<&'static str> {
     primitive_cgo_cast_type(&ty.cpp_type)
         .or_else(|| primitive_cgo_cast_type(&ty.c_type))
-        .unwrap_or_else(|| {
-            panic!(
+        .with_context(|| {
+            format!(
                 "unsupported type in cgo_cast_type: cpp_type={:?}, c_type={:?}",
                 ty.cpp_type, ty.c_type
             )
@@ -348,7 +362,13 @@ pub(super) fn go_overload_token(ty: &IrType) -> String {
                 &ty.cpp_type
             )))
         ),
-        _ => go_export_name(&sanitize_go_token(&ty.cpp_type)),
+        IrTypeKind::Void
+        | IrTypeKind::FixedByteArray
+        | IrTypeKind::FixedArray
+        | IrTypeKind::FixedModelArray
+        | IrTypeKind::Pointer
+        | IrTypeKind::Reference
+        | IrTypeKind::Opaque => go_export_name(&sanitize_go_token(&ty.cpp_type)),
     }
 }
 
@@ -450,7 +470,21 @@ pub(super) fn callback_go_export_name(usage: &CallbackUsage<'_>) -> String {
 pub(super) fn callback_cgo_param_type(ty: &IrType) -> &'static str {
     match ty.kind {
         IrTypeKind::String | IrTypeKind::CString => "*C.char",
-        _ => cgo_cast_type_from_c_type(&ty.c_type),
+        IrTypeKind::Void
+        | IrTypeKind::Primitive
+        | IrTypeKind::Enum
+        | IrTypeKind::FixedByteArray
+        | IrTypeKind::FixedArray
+        | IrTypeKind::FixedModelArray
+        | IrTypeKind::Pointer
+        | IrTypeKind::Reference
+        | IrTypeKind::Opaque
+        | IrTypeKind::Callback
+        | IrTypeKind::ExternStructReference
+        | IrTypeKind::ExternStructPointer
+        | IrTypeKind::ModelReference
+        | IrTypeKind::ModelPointer
+        | IrTypeKind::ModelValue => cgo_cast_type_from_c_type(&ty.c_type),
     }
 }
 
@@ -461,7 +495,23 @@ pub(super) fn callback_cgo_return_type(ty: &IrType) -> &'static str {
 pub(super) fn render_callback_go_arg(ty: &IrType, name: &str) -> String {
     match ty.kind {
         IrTypeKind::String | IrTypeKind::CString => format!("C.GoString({name})"),
-        _ => format!("{}({})", callback_go_type(ty), name),
+        IrTypeKind::Void
+        | IrTypeKind::Primitive
+        | IrTypeKind::Enum
+        | IrTypeKind::FixedByteArray
+        | IrTypeKind::FixedArray
+        | IrTypeKind::FixedModelArray
+        | IrTypeKind::Pointer
+        | IrTypeKind::Reference
+        | IrTypeKind::Opaque
+        | IrTypeKind::Callback
+        | IrTypeKind::ExternStructReference
+        | IrTypeKind::ExternStructPointer
+        | IrTypeKind::ModelReference
+        | IrTypeKind::ModelPointer
+        | IrTypeKind::ModelValue => {
+            format!("{}({})", callback_go_type(ty), name)
+        }
     }
 }
 

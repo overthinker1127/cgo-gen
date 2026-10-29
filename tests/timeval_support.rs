@@ -115,7 +115,7 @@ fn renders_go_facade_and_cpp_wrapper_for_timeval_params() {
     );
     assert!(go[0].contents.contains("panic(\"value reference is nil\")"));
 
-    let source = render_source(&ctx, &ir);
+    let source = render_source(&ctx, &ir).unwrap();
     assert!(source.contains("return TakeByPtr(value);"));
     assert!(source.contains("return TakeByRef(*value);"));
 }

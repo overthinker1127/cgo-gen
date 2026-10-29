@@ -1,4 +1,7 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    borrow::Cow,
+    collections::{BTreeMap, BTreeSet},
+};
 
 use anyhow::{Result, bail};
 
@@ -124,16 +127,18 @@ pub(crate) fn render_go_facade_with_owned_opaques(
     let owned_opaque_value_handles = if global_owned_opaque_value_handles.is_empty()
         && local_owned_opaque_value_handles.is_empty()
     {
-        collect_owned_opaque_model_value_handles(config, &functions, &classes)
+        Cow::Owned(collect_owned_opaque_model_value_handles(
+            config, &functions, &classes,
+        ))
     } else {
-        global_owned_opaque_value_handles.clone()
+        Cow::Borrowed(global_owned_opaque_value_handles)
     };
     let local_owned_opaque_value_handles = if global_owned_opaque_value_handles.is_empty()
         && local_owned_opaque_value_handles.is_empty()
     {
-        owned_opaque_value_handles.clone()
+        owned_opaque_value_handles.as_ref()
     } else {
-        local_owned_opaque_value_handles.clone()
+        local_owned_opaque_value_handles
     };
 
     if functions.is_empty() && classes.is_empty() && enums.is_empty() && constants.is_empty() {
@@ -166,12 +171,12 @@ pub(crate) fn render_go_facade_with_owned_opaques(
             globally_emitted_opaques,
             global_rooted_handles,
             owned_opaque_value_handles: &owned_opaque_value_handles,
-            local_owned_opaque_value_handles: &local_owned_opaque_value_handles,
-        }),
+            local_owned_opaque_value_handles,
+        })?,
     }])
 }
 
-fn render_go_facade_file(input: GoFacadeFile<'_, '_>) -> String {
+fn render_go_facade_file(input: GoFacadeFile<'_, '_>) -> Result<String> {
     let GoFacadeFile {
         config,
         constants,
@@ -328,7 +333,7 @@ fn render_go_facade_file(input: GoFacadeFile<'_, '_>) -> String {
             function,
             &rooted_handles,
             owned_opaque_value_handles,
-        ));
+        )?);
         out.push('\n');
     }
     for dispatcher in &free_function_dispatchers {
@@ -337,7 +342,7 @@ fn render_go_facade_file(input: GoFacadeFile<'_, '_>) -> String {
             dispatcher,
             &rooted_handles,
             owned_opaque_value_handles,
-        ));
+        )?);
         out.push('\n');
     }
 
@@ -390,7 +395,7 @@ fn render_go_facade_file(input: GoFacadeFile<'_, '_>) -> String {
                 constructor_name,
                 &rooted_handles,
                 owned_opaque_value_handles,
-            ));
+            )?);
             out.push('\n');
         }
         out.push_str(&render_facade_close(class));
@@ -407,7 +412,7 @@ fn render_go_facade_file(input: GoFacadeFile<'_, '_>) -> String {
                 method,
                 &rooted_handles,
                 owned_opaque_value_handles,
-            ));
+            )?);
             out.push('\n');
         }
         for dispatcher in &dispatchers {
@@ -417,12 +422,12 @@ fn render_go_facade_file(input: GoFacadeFile<'_, '_>) -> String {
                 dispatcher,
                 &rooted_handles,
                 owned_opaque_value_handles,
-            ));
+            )?);
             out.push('\n');
         }
     }
 
-    out
+    Ok(out)
 }
 
 fn render_go_constants(constants: &[&IrMacroConstant]) -> String {
@@ -578,7 +583,7 @@ fn go_param_type(config: &PipelineContext, ty: &IrType) -> Option<String> {
                         .map(|base| format!("*{}", go_export_name(base)))
                 })
         }
-        _ => None,
+        IrTypeKind::Void | IrTypeKind::Opaque => None,
     }
 }
 
@@ -627,13 +632,6 @@ fn go_model_return_type(config: &PipelineContext, ty: &IrType) -> String {
         })
 }
 
-fn is_model_wrapper_return(ty: &IrType) -> bool {
-    matches!(
-        ty.kind,
-        IrTypeKind::ModelReference | IrTypeKind::ModelPointer | IrTypeKind::ModelValue
-    )
-}
-
 fn model_return_is_owned(config: &PipelineContext, function: &IrFunction, ty: &IrType) -> bool {
     ty.kind == IrTypeKind::ModelValue
         || (ty.kind == IrTypeKind::ModelPointer && config.owner_marks_callable(&function.cpp_name))
@@ -672,7 +670,7 @@ fn go_return_sig(config: &PipelineContext, ty: &IrType) -> String {
             format!("([]*{go_name}, error)")
         }
         IrTypeKind::Pointer => go_pointer_return_type(ty).unwrap_or_default(),
-        _ if is_model_wrapper_return(ty) => {
+        IrTypeKind::ModelReference | IrTypeKind::ModelPointer | IrTypeKind::ModelValue => {
             let model_ret = go_model_return_type(config, ty);
             if model_ret == "unsafe.Pointer" {
                 "unsafe.Pointer".to_string()
@@ -680,7 +678,15 @@ fn go_return_sig(config: &PipelineContext, ty: &IrType) -> String {
                 format!("*{model_ret}")
             }
         }
-        _ => go_value_type(config, ty).unwrap_or_else(|| "int32".to_string()),
+        IrTypeKind::Primitive
+        | IrTypeKind::Enum
+        | IrTypeKind::Reference
+        | IrTypeKind::Opaque
+        | IrTypeKind::Callback
+        | IrTypeKind::ExternStructReference
+        | IrTypeKind::ExternStructPointer => {
+            go_value_type(config, ty).unwrap_or_else(|| "int32".to_string())
+        }
     }
 }
 
@@ -695,8 +701,16 @@ fn go_nil_return_stmt(ty: &IrType) -> String {
             "return nil, errors.New(\"facade receiver is nil\")".to_string()
         }
         IrTypeKind::Pointer => "return nil".to_string(),
-        _ if is_model_wrapper_return(ty) => "return nil".to_string(),
-        _ => format!(
+        IrTypeKind::ModelReference | IrTypeKind::ModelPointer | IrTypeKind::ModelValue => {
+            "return nil".to_string()
+        }
+        IrTypeKind::Primitive
+        | IrTypeKind::Enum
+        | IrTypeKind::Reference
+        | IrTypeKind::Opaque
+        | IrTypeKind::Callback
+        | IrTypeKind::ExternStructReference
+        | IrTypeKind::ExternStructPointer => format!(
             "return {}",
             zero_value_for_go_type(go_type_for_ir(ty).unwrap_or("int32"))
         ),
@@ -900,7 +914,8 @@ mod tests {
             }],
         };
 
-        let code = render_free_function(&config, &function, &BTreeSet::new(), &BTreeSet::new());
+        let code =
+            render_free_function(&config, &function, &BTreeSet::new(), &BTreeSet::new()).unwrap();
         assert!(code.contains("if len(items) != 2 {"));
         assert!(code.contains("for _i, _v := range items {"));
         assert!(code.contains("if _v == nil || _v.ptr == nil {"));
@@ -940,7 +955,8 @@ mod tests {
             }],
         };
 
-        let code = render_free_function(&config, &function, &BTreeSet::new(), &BTreeSet::new());
+        let code =
+            render_free_function(&config, &function, &BTreeSet::new(), &BTreeSet::new()).unwrap();
         assert!(code.contains("if len(records) != 2 {"));
         assert!(code.contains("for _i, _v := range records {"));
         assert!(code.contains("if _v == nil || _v.ptr == nil {"));
@@ -1699,7 +1715,8 @@ mod tests {
             &function,
             &BTreeSet::new(),
             &BTreeSet::new(),
-        );
+        )
+        .unwrap();
         assert!(
             code.contains("*ThingModel"),
             "expected return type *ThingModel but got:\n{code}"
@@ -1789,7 +1806,8 @@ mod tests {
             &function,
             &BTreeSet::new(),
             &BTreeSet::new(),
-        );
+        )
+        .unwrap();
         assert!(
             code.contains("return newBorrowedThingModel(raw, a.root)"),
             "expected newBorrowedThingModel(raw, a.root) but got:\n{code}"
@@ -1918,7 +1936,8 @@ mod tests {
             &function,
             &BTreeSet::new(),
             &BTreeSet::new(),
-        );
+        )
+        .unwrap();
         assert!(
             code.contains("return newBorrowedThingModel(raw, a.root)"),
             "expected newBorrowedThingModel(raw, a.root) but got:\n{code}"
@@ -1944,7 +1963,8 @@ mod tests {
             }],
         };
 
-        let code = render_free_function(&config, &function, &BTreeSet::new(), &BTreeSet::new());
+        let code =
+            render_free_function(&config, &function, &BTreeSet::new(), &BTreeSet::new()).unwrap();
         assert!(
             code.contains("return newBorrowedThingModel(raw, parent.root)"),
             "expected newBorrowedThingModel(raw, parent.root) but got:\n{code}"

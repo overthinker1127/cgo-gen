@@ -1,4 +1,5 @@
 use std::{
+    borrow::Cow,
     collections::{BTreeMap, BTreeSet},
     fs,
     path::{Component, Path, PathBuf},
@@ -87,12 +88,12 @@ pub fn generate_all(ctx: &PipelineContext, write_ir: bool) -> Result<GenerationS
             .first()
             .cloned()
             .map(|header| ctx.scoped_to_header(header))
-            .unwrap_or_else(|| ctx.clone());
+            .unwrap_or(ctx);
         let header_api = scoped
             .target_header
             .as_deref()
-            .map(|header| parsed.filter_to_header(header))
-            .unwrap_or_else(|| parsed.clone());
+            .map(|header| Cow::Owned(parsed.filter_to_header(header)))
+            .unwrap_or(Cow::Borrowed(&parsed));
         let normalized_ir = ir::normalize(&scoped, &header_api)?;
         let class_handles = class_handles_with_methods(&normalized_ir);
         let local_owned_opaque_value_handles = opaque_model_value_handles_needing_go_ownership(
@@ -317,7 +318,7 @@ fn generate_with_opaque_ownership(
                 ir,
                 native_covered_handles,
                 local_owned_opaque_value_handles,
-            )),
+            )?),
         )
         .with_context(|| format!("failed to write source: {}", source_path.display()))?;
         summary.record(source_path);
@@ -806,7 +807,12 @@ fn render_header_with_optional_owned_opaque_handles(
     out
 }
 
-pub fn render_source(ctx: &PipelineContext, ir: &IrModule) -> String {
+/// Renders the C++ wrapper source.
+///
+/// # Errors
+///
+/// Returns an error if a callback parameter has no corresponding typedef metadata.
+pub fn render_source(ctx: &PipelineContext, ir: &IrModule) -> Result<String> {
     render_source_with_covered_handles(ctx, ir, &BTreeSet::new())
 }
 
@@ -814,7 +820,7 @@ fn render_source_with_covered_handles(
     ctx: &PipelineContext,
     ir: &IrModule,
     covered_handles: &BTreeSet<String>,
-) -> String {
+) -> Result<String> {
     render_source_with_optional_owned_opaque_handles(ctx, ir, covered_handles, None)
 }
 
@@ -823,7 +829,7 @@ fn render_source_with_owned_opaque_handles(
     ir: &IrModule,
     covered_handles: &BTreeSet<String>,
     owned_opaque_value_handles: &BTreeSet<String>,
-) -> String {
+) -> Result<String> {
     render_source_with_optional_owned_opaque_handles(
         ctx,
         ir,
@@ -837,7 +843,7 @@ fn render_source_with_optional_owned_opaque_handles(
     ir: &IrModule,
     covered_handles: &BTreeSet<String>,
     owned_opaque_value_handles: Option<&BTreeSet<String>>,
-) -> String {
+) -> Result<String> {
     let mut out = String::new();
     out.push_str(&format!("#include \"{}\"\n", ctx.output.header));
     out.push_str("#include <cstdlib>\n#include <cstring>\n#include <new>\n#include <string>\n\n");
@@ -867,7 +873,7 @@ fn render_source_with_optional_owned_opaque_handles(
             .iter()
             .any(|param| param.ty.kind == IrTypeKind::Callback)
     }) {
-        out.push_str(&render_callback_bridge_def(function, &callback_map));
+        out.push_str(&render_callback_bridge_def(function, &callback_map)?);
         out.push('\n');
     }
 
@@ -881,7 +887,7 @@ fn render_source_with_optional_owned_opaque_handles(
 
     // array_free helpers are defined as static inline in the header
 
-    out
+    Ok(out)
 }
 
 fn source_include_prelude(ctx: &PipelineContext, ir: &IrModule) -> Vec<String> {
@@ -1077,8 +1083,8 @@ fn render_function_def(function: &IrFunction) -> String {
 
 fn render_callback_bridge_def(
     function: &IrFunction,
-    callbacks: &std::collections::BTreeMap<String, IrCallback>,
-) -> String {
+    callbacks: &BTreeMap<&str, &IrCallback>,
+) -> Result<String> {
     let bridge = make_callback_bridge_function(function);
     let signature = format!(
         "{} {}({})",
@@ -1086,8 +1092,8 @@ fn render_callback_bridge_def(
         bridge.name,
         render_param_list(&bridge)
     );
-    let body = render_callback_bridge_body(function, callbacks);
-    format!("{signature} {{\n{body}}}\n")
+    let body = render_callback_bridge_body(function, callbacks)?;
+    Ok(format!("{signature} {{\n{body}}}\n"))
 }
 
 fn render_constructor_body(function: &IrFunction) -> String {
@@ -1185,11 +1191,23 @@ fn render_callable_body(function: &IrFunction, target: &str, arg_start: usize) -
             function.returns.c_type, target, args
         ),
         IrTypeKind::ModelValue => render_model_value_return(function, target, &args),
-        _ if function.returns.handle.is_some() => format!(
-            "    return reinterpret_cast<{}>({}({}));\n",
-            function.returns.c_type, target, args
-        ),
-        _ => format!("    return {}({});\n", target, args),
+        IrTypeKind::Primitive
+        | IrTypeKind::CString
+        | IrTypeKind::Pointer
+        | IrTypeKind::Opaque
+        | IrTypeKind::Callback
+        | IrTypeKind::ExternStructReference
+        | IrTypeKind::ExternStructPointer
+        | IrTypeKind::ModelPointer => {
+            if function.returns.handle.is_some() {
+                format!(
+                    "    return reinterpret_cast<{}>({}({}));\n",
+                    function.returns.c_type, target, args
+                )
+            } else {
+                format!("    return {}({});\n", target, args)
+            }
+        }
     }
 }
 
@@ -1225,7 +1243,16 @@ fn render_field_getter_body(function: &IrFunction, receiver: &str, field_name: &
             function.returns.c_type,
             base_model_cpp_type(&function.returns.cpp_type),
         ),
-        _ => format!("    return {receiver}->{};\n", field_name),
+        IrTypeKind::Void
+        | IrTypeKind::Primitive
+        | IrTypeKind::CString
+        | IrTypeKind::String
+        | IrTypeKind::Pointer
+        | IrTypeKind::Reference
+        | IrTypeKind::Opaque
+        | IrTypeKind::Callback
+        | IrTypeKind::ExternStructReference
+        | IrTypeKind::ExternStructPointer => format!("    return {receiver}->{};\n", field_name),
     }
 }
 
@@ -1321,7 +1348,19 @@ fn render_field_setter_body(function: &IrFunction, receiver: &str, field_name: &
             "    {receiver}->{field_name} = {};\n",
             render_model_deref_cast(&value_param.ty, "value")
         ),
-        _ => format!("    {receiver}->{} = value;\n", field_name),
+        IrTypeKind::Void
+        | IrTypeKind::Primitive
+        | IrTypeKind::String
+        | IrTypeKind::Pointer
+        | IrTypeKind::Reference
+        | IrTypeKind::Opaque
+        | IrTypeKind::Callback
+        | IrTypeKind::ExternStructReference
+        | IrTypeKind::ExternStructPointer
+        | IrTypeKind::ModelReference
+        | IrTypeKind::ModelPointer => {
+            format!("    {receiver}->{} = value;\n", field_name)
+        }
     }
 }
 
@@ -1436,12 +1475,12 @@ fn call_args(function: &IrFunction, start: usize) -> String {
         .params
         .iter()
         .skip(start)
-        .map(|param| render_cpp_arg(param.ty.clone(), &param.name))
+        .map(|param| render_cpp_arg(&param.ty, &param.name))
         .collect::<Vec<_>>()
         .join(", ")
 }
 
-fn render_cpp_arg(ty: IrType, name: &str) -> String {
+fn render_cpp_arg(ty: &IrType, name: &str) -> String {
     match ty.kind {
         IrTypeKind::Enum => format!("static_cast<{}>({name})", ty.cpp_type.trim()),
         IrTypeKind::Primitive if ty.cpp_type != ty.c_type => {
@@ -1456,7 +1495,7 @@ fn render_cpp_arg(ty: IrType, name: &str) -> String {
             format!("static_cast<{cast_type}>({name})")
         }
         IrTypeKind::String => format!("std::string({name} != nullptr ? {name} : \"\")"),
-        IrTypeKind::Reference => primitive_alias_cast_target(&ty)
+        IrTypeKind::Reference => primitive_alias_cast_target(ty)
             .map(|cpp_type| format!("*reinterpret_cast<{}*>({name})", cpp_type))
             .or_else(|| {
                 // Unknown typedef: cast using canonical C type to avoid referencing
@@ -1471,20 +1510,27 @@ fn render_cpp_arg(ty: IrType, name: &str) -> String {
                 }
             })
             .unwrap_or_else(|| format!("*{name}")),
-        IrTypeKind::Pointer => primitive_alias_cast_target(&ty)
+        IrTypeKind::Pointer => primitive_alias_cast_target(ty)
             .map(|cpp_type| format!("reinterpret_cast<{}*>({name})", cpp_type))
             .unwrap_or_else(|| name.to_string()),
         IrTypeKind::ExternStructReference => format!("*{name}"),
-        IrTypeKind::ModelReference => render_model_deref_cast(&ty, name),
-        IrTypeKind::ModelValue => render_model_deref_cast(&ty, name),
+        IrTypeKind::ModelReference => render_model_deref_cast(ty, name),
+        IrTypeKind::ModelValue => render_model_deref_cast(ty, name),
         IrTypeKind::ModelPointer => {
-            let base = qualified_model_cpp_type(&ty);
+            let base = qualified_model_cpp_type(ty);
             let depth = ty.cpp_type.chars().filter(|ch| *ch == '*').count().max(1);
             let stars = "*".repeat(depth);
             format!("reinterpret_cast<{base}{stars}>({name})")
         }
         IrTypeKind::FixedByteArray => name.to_string(),
-        _ => name.to_string(),
+        IrTypeKind::Void
+        | IrTypeKind::Primitive
+        | IrTypeKind::CString
+        | IrTypeKind::FixedArray
+        | IrTypeKind::FixedModelArray
+        | IrTypeKind::Opaque
+        | IrTypeKind::Callback
+        | IrTypeKind::ExternStructPointer => name.to_string(),
     }
 }
 
@@ -1492,7 +1538,21 @@ fn primitive_alias_cast_target(ty: &IrType) -> Option<&str> {
     let cpp_base = match ty.kind {
         IrTypeKind::Reference => ty.cpp_type.trim_end_matches('&').trim(),
         IrTypeKind::Pointer => ty.cpp_type.trim_end_matches('*').trim(),
-        _ => return None,
+        IrTypeKind::Void
+        | IrTypeKind::Primitive
+        | IrTypeKind::Enum
+        | IrTypeKind::CString
+        | IrTypeKind::FixedByteArray
+        | IrTypeKind::FixedArray
+        | IrTypeKind::FixedModelArray
+        | IrTypeKind::String
+        | IrTypeKind::Opaque
+        | IrTypeKind::Callback
+        | IrTypeKind::ExternStructReference
+        | IrTypeKind::ExternStructPointer
+        | IrTypeKind::ModelReference
+        | IrTypeKind::ModelPointer
+        | IrTypeKind::ModelValue => return None,
     };
     let c_base = ty.c_type.trim_end_matches('*').trim();
     if generator_supported_primitive(cpp_base) && cpp_base != c_base {
@@ -1597,30 +1657,33 @@ fn make_callback_bridge_function(function: &IrFunction) -> IrFunction {
     }
 }
 
-fn callback_map(ir: &IrModule) -> std::collections::BTreeMap<String, IrCallback> {
+fn callback_map(ir: &IrModule) -> BTreeMap<&str, &IrCallback> {
     ir.callbacks
         .iter()
-        .map(|callback| (callback.name.clone(), callback.clone()))
+        .map(|callback| (callback.name.as_str(), callback))
         .collect()
 }
 
 fn render_callback_bridge_body(
     function: &IrFunction,
-    callbacks: &std::collections::BTreeMap<String, IrCallback>,
-) -> String {
+    callbacks: &BTreeMap<&str, &IrCallback>,
+) -> Result<String> {
     let mut out = String::new();
 
     for (index, param) in function.params.iter().enumerate() {
         if param.ty.kind != IrTypeKind::Callback {
             continue;
         }
-        let callback = callbacks
-            .get(&param.ty.cpp_type)
-            .expect("callback bridge requires callback typedef metadata");
+        let callback = callbacks.get(param.ty.cpp_type.as_str()).with_context(|| {
+            format!(
+                "missing callback typedef metadata for {} in {}",
+                param.ty.cpp_type, function.cpp_name
+            )
+        })?;
         out.push_str(&render_callback_trampoline_decl(function, index, callback));
     }
 
-    let target = function.name.clone();
+    let target = &function.name;
     let call_args = function
         .params
         .iter()
@@ -1640,15 +1703,32 @@ fn render_callback_bridge_body(
 
     match function.returns.kind {
         IrTypeKind::Void => out.push_str(&format!("    {}({});\n", target, call_args)),
-        _ => out.push_str(&format!("    return {}({});\n", target, call_args)),
+        IrTypeKind::Primitive
+        | IrTypeKind::Enum
+        | IrTypeKind::CString
+        | IrTypeKind::FixedByteArray
+        | IrTypeKind::FixedArray
+        | IrTypeKind::FixedModelArray
+        | IrTypeKind::String
+        | IrTypeKind::Pointer
+        | IrTypeKind::Reference
+        | IrTypeKind::Opaque
+        | IrTypeKind::Callback
+        | IrTypeKind::ExternStructReference
+        | IrTypeKind::ExternStructPointer
+        | IrTypeKind::ModelReference
+        | IrTypeKind::ModelPointer
+        | IrTypeKind::ModelValue => {
+            out.push_str(&format!("    return {}({});\n", target, call_args));
+        }
     }
 
-    out
+    Ok(out)
 }
 
 fn render_go_callback_extern_c_block(
     functions: &[IrFunction],
-    callbacks: &std::collections::BTreeMap<String, IrCallback>,
+    callbacks: &BTreeMap<&str, &IrCallback>,
 ) -> String {
     let mut decls = Vec::new();
     for function in functions {
@@ -1656,7 +1736,7 @@ fn render_go_callback_extern_c_block(
             if param.ty.kind != IrTypeKind::Callback {
                 continue;
             }
-            if let Some(callback) = callbacks.get(&param.ty.cpp_type) {
+            if let Some(callback) = callbacks.get(param.ty.cpp_type.as_str()) {
                 let params = if callback.params.is_empty() {
                     "void".to_string()
                 } else {

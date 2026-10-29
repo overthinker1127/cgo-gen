@@ -1,6 +1,9 @@
 # Rust build output
 /target/
 
+# Isolated development workspaces
+/.worktrees/
+
 # Local editor and OS files
 .DS_Store
 Thumbs.db

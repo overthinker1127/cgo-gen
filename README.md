@@ -267,6 +267,20 @@ For large libraries, either put the small header surface you want to wrap in one
 
 Unsupported declarations may be skipped instead of aborting the whole run. When that happens, the reason is recorded in `support.skipped_declarations` in the normalized IR.
 
+## Rust API
+
+`generator::render_source` returns `anyhow::Result<String>`. Callers must handle
+rendering errors, including missing callback typedef metadata:
+
+```rust
+let source = cgo_gen::generator::render_source(&ctx, &ir)?;
+```
+
+`generator::render_go_structs` also reports malformed indexed setters as errors
+instead of panicking. Valid generated wrappers and the IR format are unchanged.
+The parser owns libclang indexes and translation units through RAII, disposing
+translation units before their index on both success and early error returns.
+
 ## License
 
 [MIT](./LICENSE)

@@ -25,7 +25,7 @@ fn disambiguates_overloaded_free_functions_with_signature_suffixes() {
     );
 
     let header = render_header(&ctx, &ir);
-    let source = render_source(&ctx, &ir);
+    let source = render_source(&ctx, &ir).unwrap();
     assert!(header.contains("int cgowrap_clash_add__int_int(int lhs, int rhs);"));
     assert!(header.contains("double cgowrap_clash_add__double_double(double lhs, double rhs);"));
     assert!(source.contains("int cgowrap_clash_add__int_int(int lhs, int rhs)"));
@@ -54,7 +54,7 @@ fn disambiguates_overloaded_methods_with_signature_suffixes() {
     );
 
     let header = render_header(&ctx, &ir);
-    let source = render_source(&ctx, &ir);
+    let source = render_source(&ctx, &ir).unwrap();
     assert!(
         header
             .contains("int cgowrap_clash_Widget_set__int_mut(clashWidgetHandle* self, int value);")
@@ -317,7 +317,7 @@ output:
     );
 
     let header = render_header(&ctx, &ir);
-    let source = render_source(&ctx, &ir);
+    let source = render_source(&ctx, &ir).unwrap();
     let go_files = render_go_structs(&ctx, &ir).unwrap();
     assert_eq!(go_files.len(), 1, "expected one Go facade file");
     let go = &go_files[0].contents;
@@ -454,7 +454,7 @@ output:
         "default variant should not create a duplicate suffix: {names:?}"
     );
 
-    let source = render_source(&ctx, &ir);
+    let source = render_source(&ctx, &ir).unwrap();
     assert!(source.contains("int cgowrap_clash__int(int value)"));
     assert!(source.contains("int cgowrap_clash__int_bool(int value, bool notify)"));
     assert!(!source.contains("cgowrap_clash__int_2"));

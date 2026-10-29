@@ -31,7 +31,7 @@ fn build_all_model_projections(
             function
                 .owner_cpp_type
                 .as_deref()
-                .map(|owner| (owner.to_string(), function))
+                .map(|owner| (owner, function))
         })
         .collect::<BTreeMap<_, _>>();
     let destructors = ir
@@ -42,33 +42,30 @@ fn build_all_model_projections(
             function
                 .owner_cpp_type
                 .as_deref()
-                .map(|owner| (owner.to_string(), function))
+                .map(|owner| (owner, function))
         })
         .collect::<BTreeMap<_, _>>();
 
-    let mut methods_by_owner = BTreeMap::<String, Vec<&IrFunction>>::new();
+    let mut methods_by_owner = BTreeMap::<&str, Vec<&IrFunction>>::new();
     for function in ir
         .functions
         .iter()
         .filter(|function| function.kind == IrFunctionKind::Method)
     {
-        let Some(owner) = &function.owner_cpp_type else {
+        let Some(owner) = function.owner_cpp_type.as_deref() else {
             continue;
         };
-        methods_by_owner
-            .entry(owner.clone())
-            .or_default()
-            .push(function);
+        methods_by_owner.entry(owner).or_default().push(function);
     }
 
     let mut projections = Vec::new();
     for (owner, class_methods) in methods_by_owner {
         if let Some(projection) = build_model_projection(
             ctx,
-            &owner,
+            owner,
             &class_methods,
-            constructors.get(&owner),
-            destructors.get(&owner),
+            constructors.get(owner),
+            destructors.get(owner),
         )? {
             projections.push(projection);
         }
@@ -86,13 +83,11 @@ fn build_model_projection(
 ) -> Result<Option<ModelProjection>> {
     let setters = class_methods
         .iter()
-        .filter_map(|function| {
-            setter_suffix(function).map(|suffix| (suffix.to_string(), *function))
-        })
+        .filter_map(|function| setter_suffix(function).map(|suffix| (suffix, *function)))
         .collect::<BTreeMap<_, _>>();
 
     let mut fields = Vec::new();
-    let mut seen = BTreeMap::<String, ()>::new();
+    let mut seen = BTreeMap::<&str, ()>::new();
     for function in class_methods {
         let Some(suffix) = getter_suffix(function) else {
             continue;
@@ -100,7 +95,7 @@ fn build_model_projection(
         let Some(setter) = setters.get(suffix) else {
             continue;
         };
-        if seen.insert(suffix.to_string(), ()).is_some() {
+        if seen.insert(suffix, ()).is_some() {
             continue;
         }
 
@@ -123,7 +118,7 @@ fn build_model_projection(
 
         fields.push(ModelProjectionField {
             go_name: go_field_name(suffix),
-            go_type: getter_ty.to_string(),
+            go_type: getter_ty,
             getter_symbol: function.name.clone(),
             setter_symbol: setter.name.clone(),
             return_kind: function.returns.kind,
@@ -184,7 +179,16 @@ fn go_model_field_type(ctx: &PipelineContext, ty: &IrType) -> Option<String> {
             let go_name = go_model_return_type(ctx, ty);
             Some(format!("[]*{go_name}"))
         }
-        _ => go_type_for_ir(ty).map(str::to_string),
+        IrTypeKind::Void
+        | IrTypeKind::Primitive
+        | IrTypeKind::CString
+        | IrTypeKind::String
+        | IrTypeKind::Pointer
+        | IrTypeKind::Reference
+        | IrTypeKind::Opaque
+        | IrTypeKind::Callback
+        | IrTypeKind::ExternStructReference
+        | IrTypeKind::ExternStructPointer => go_type_for_ir(ty).map(str::to_string),
     }
 }
 
@@ -252,7 +256,18 @@ fn go_type_for_ir(ty: &IrType) -> Option<&'static str> {
         IrTypeKind::Primitive => {
             primitive_go_type(&ty.cpp_type).or_else(|| primitive_go_type(&ty.c_type))
         }
-        _ => None,
+        IrTypeKind::Void
+        | IrTypeKind::FixedArray
+        | IrTypeKind::FixedModelArray
+        | IrTypeKind::Pointer
+        | IrTypeKind::Reference
+        | IrTypeKind::Opaque
+        | IrTypeKind::Callback
+        | IrTypeKind::ExternStructReference
+        | IrTypeKind::ExternStructPointer
+        | IrTypeKind::ModelReference
+        | IrTypeKind::ModelPointer
+        | IrTypeKind::ModelValue => None,
     }
 }
 

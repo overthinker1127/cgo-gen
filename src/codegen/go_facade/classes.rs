@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 use crate::{
     codegen::ir_norm,
@@ -187,15 +187,15 @@ pub(super) fn render_facade_constructor(
     constructor_name: &str,
     covered_handles: &BTreeSet<String>,
     owned_opaque_value_handles: &BTreeSet<String>,
-) -> String {
+) -> Result<String> {
     let constructor_params = constructor.params.iter().collect::<Vec<_>>();
-    let params = render_param_list(config, &constructor_params);
+    let params = render_param_list(config, &constructor_params)?;
     let prep = render_call_prep(
         config,
         &constructor_params,
         covered_handles,
         owned_opaque_value_handles,
-    );
+    )?;
 
     let mut out = format!(
         "func {constructor_name}({params}) (*{}, error) {{\n",
@@ -225,7 +225,7 @@ pub(super) fn render_facade_constructor(
         "    if ptr == nil {{\n        return nil, errors.New(\"wrapper returned nil facade handle\")\n    }}\n    return newOwned{}(ptr), nil\n}}\n",
         class.go_name
     ));
-    out
+    Ok(out)
 }
 
 pub(super) fn render_facade_close(class: &AnalyzedFacadeClass<'_>) -> String {
@@ -272,15 +272,15 @@ pub(super) fn render_general_api_method(
     function: &IrFunction,
     covered_handles: &BTreeSet<String>,
     owned_opaque_value_handles: &BTreeSet<String>,
-) -> String {
+) -> Result<String> {
     if let Some(rendered) = render_special_field_method(
         config,
         class,
         function,
         covered_handles,
         owned_opaque_value_handles,
-    ) {
-        return rendered;
+    )? {
+        return Ok(rendered);
     }
     if has_callback_param(function.params.iter().skip(1)) {
         return render_callback_method(
@@ -293,13 +293,13 @@ pub(super) fn render_general_api_method(
     }
     let receiver = receiver_name(&class.go_name);
     let method_params = function.params.iter().skip(1).collect::<Vec<_>>();
-    let params = render_param_list(config, &method_params);
+    let params = render_param_list(config, &method_params)?;
     let prep = render_call_prep(
         config,
         &method_params,
         covered_handles,
         owned_opaque_value_handles,
-    );
+    )?;
     let call = format!(
         "C.{}({})",
         function.name,
@@ -339,9 +339,9 @@ pub(super) fn render_general_api_method(
         Some(format!("{receiver}.root")),
         covered_handles,
         owned_opaque_value_handles,
-    ));
+    )?);
     out.push_str("}\n");
-    out
+    Ok(out)
 }
 
 fn render_special_field_method(
@@ -350,36 +350,33 @@ fn render_special_field_method(
     function: &IrFunction,
     covered_handles: &BTreeSet<String>,
     owned_opaque_value_handles: &BTreeSet<String>,
-) -> Option<String> {
-    let accessor = function.field_accessor.as_ref()?;
-    if accessor.access == FieldAccessKind::Get
-        && function.returns.kind == IrTypeKind::FixedModelArray
-    {
-        return Some(render_fixed_model_array_getter_wrapper(
-            config, class, function,
-        ));
-    }
-    if accessor.access == FieldAccessKind::Set
-        && function
-            .params
-            .get(1)
-            .is_some_and(|param| param.ty.kind == IrTypeKind::FixedModelArray)
-    {
-        return Some(render_fixed_model_array_setter_wrapper(class, function));
-    }
-    if accessor.access == FieldAccessKind::GetAt {
-        return Some(render_fixed_model_array_getter_at(config, class, function));
-    }
-    if accessor.access == FieldAccessKind::SetAt {
-        return Some(render_fixed_model_array_setter_at(
+) -> Result<Option<String>> {
+    let Some(accessor) = &function.field_accessor else {
+        return Ok(None);
+    };
+    let rendered = match accessor.access {
+        FieldAccessKind::Get if function.returns.kind == IrTypeKind::FixedModelArray => Some(
+            render_fixed_model_array_getter_wrapper(config, class, function),
+        ),
+        FieldAccessKind::Set
+            if function
+                .params
+                .get(1)
+                .is_some_and(|param| param.ty.kind == IrTypeKind::FixedModelArray) =>
+        {
+            Some(render_fixed_model_array_setter_wrapper(class, function))
+        }
+        FieldAccessKind::GetAt => Some(render_fixed_model_array_getter_at(config, class, function)),
+        FieldAccessKind::SetAt => Some(render_fixed_model_array_setter_at(
             config,
             class,
             function,
             covered_handles,
             owned_opaque_value_handles,
-        ));
-    }
-    None
+        )?),
+        FieldAccessKind::Get | FieldAccessKind::Set => None,
+    };
+    Ok(rendered)
 }
 
 fn render_fixed_model_array_getter_wrapper(
@@ -493,11 +490,16 @@ fn render_fixed_model_array_setter_at(
     function: &IrFunction,
     covered_handles: &BTreeSet<String>,
     owned_opaque_value_handles: &BTreeSet<String>,
-) -> String {
+) -> Result<String> {
     let receiver = receiver_name(&class.go_name);
-    let value_param = function.params.get(2).expect("indexed setter has value");
-    let go_name =
-        go_param_type(config, &value_param.ty).unwrap_or_else(|| "*unsafe.Pointer".to_string());
+    let value_param = function.params.get(2).with_context(|| {
+        format!(
+            "indexed setter {} has no value parameter",
+            function.cpp_name
+        )
+    })?;
+    let go_name = go_param_type(config, &value_param.ty)
+        .with_context(|| format!("unsupported indexed setter value in {}", function.cpp_name))?;
     let mut out = format!(
         "func ({receiver} *{}) {}(index int, {} {}) {{\n",
         class.go_name,
@@ -529,7 +531,7 @@ fn render_fixed_model_array_setter_at(
         function.name
     ));
     out.push_str("}\n");
-    out
+    Ok(out)
 }
 
 fn render_param_list_dummy(function: &IrFunction) -> String {
@@ -549,7 +551,24 @@ fn render_param_list_dummy(function: &IrFunction) -> String {
                         .unwrap_or_else(|| "unsafe.Pointer".to_string());
                     format!("[]*{go_name}")
                 }
-                _ => go_type_for_ir(&param.ty).unwrap_or("int32").to_string(),
+                IrTypeKind::Void
+                | IrTypeKind::Primitive
+                | IrTypeKind::Enum
+                | IrTypeKind::CString
+                | IrTypeKind::FixedByteArray
+                | IrTypeKind::FixedArray
+                | IrTypeKind::String
+                | IrTypeKind::Pointer
+                | IrTypeKind::Reference
+                | IrTypeKind::Opaque
+                | IrTypeKind::Callback
+                | IrTypeKind::ExternStructReference
+                | IrTypeKind::ExternStructPointer
+                | IrTypeKind::ModelReference
+                | IrTypeKind::ModelPointer
+                | IrTypeKind::ModelValue => {
+                    go_type_for_ir(&param.ty).unwrap_or("int32").to_string()
+                }
             };
             format!("{} {}", param.name, go_ty)
         })

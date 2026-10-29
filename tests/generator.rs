@@ -17,10 +17,71 @@ fn renders_header_and_source_from_fixture() {
     assert!(header.contains("fooBarHandle* cgowrap_foo_Bar_new(int value);"));
     assert!(header.contains("char* cgowrap_foo_Bar_name(const fooBarHandle* self);"));
 
-    let source = render_source(&ctx, &ir);
+    let source = render_source(&ctx, &ir).unwrap();
     assert!(source.contains(&format!("#include \"{}\"", config.output.header)));
     assert!(source.contains("return reinterpret_cast<fooBarHandle*>(new foo::Bar(value));"));
     assert!(source.contains("delete reinterpret_cast<foo::Bar*>(self);"));
+}
+
+#[test]
+fn rejects_incomplete_callback_metadata_with_an_error() {
+    let root = env::temp_dir().join(format!("c_go_missing_callback_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    let mut config = Config::load("tests/fixtures/simple/config.yaml").unwrap();
+    config.output.dir = root.clone();
+    let ctx = PipelineContext::new(config);
+    let parsed = parser::parse(&ctx).unwrap();
+    let mut ir = ir::normalize(&ctx, &parsed).unwrap();
+    let function = ir
+        .functions
+        .iter_mut()
+        .find(|function| function.kind == cgo_gen::IrFunctionKind::Function)
+        .unwrap();
+    function.params.push(ir::IrParam {
+        name: "callback".to_string(),
+        ty: ir::IrType {
+            kind: IrTypeKind::Callback,
+            cpp_type: "MissingCallback".to_string(),
+            c_type: "MissingCallback".to_string(),
+            handle: None,
+        },
+    });
+
+    let result = generator::generate(&ctx, &ir, false, &Default::default());
+    let _ = fs::remove_dir_all(&root);
+    let error = result.expect_err("missing callback metadata must be reported, not panic");
+    assert!(error.to_string().contains("MissingCallback"));
+}
+
+#[test]
+fn rejects_incomplete_indexed_setter_with_an_error() {
+    let config = Config::load("tests/fixtures/simple/config.yaml").unwrap();
+    let ctx = PipelineContext::new(config);
+    let parsed = parser::parse(&ctx).unwrap();
+    let mut ir = ir::normalize(&ctx, &parsed).unwrap();
+    let method = ir
+        .functions
+        .iter_mut()
+        .find(|function| function.kind == cgo_gen::IrFunctionKind::Method)
+        .unwrap();
+    method.name = "cgowrap_foo_Bar_SetValuesAt".to_string();
+    method.cpp_name = "foo::Bar::SetValuesAt".to_string();
+    method.params.truncate(1);
+    method.returns = ir::IrType {
+        kind: IrTypeKind::Void,
+        cpp_type: "void".to_string(),
+        c_type: "void".to_string(),
+        handle: None,
+    };
+    method.field_accessor = Some(ir::IrFieldAccessor {
+        field_name: "values".to_string(),
+        access: cgo_gen::FieldAccessKind::SetAt,
+        array_len: Some(2),
+    });
+
+    let error = render_go_structs(&ctx, &ir)
+        .expect_err("an indexed setter without its value must be reported, not panic");
+    assert!(error.to_string().contains("SetValuesAt"));
 }
 
 #[test]
@@ -85,7 +146,7 @@ output:
     .unwrap();
     let parsed = parser::parse(&ctx).unwrap();
     let ir = ir::normalize(&ctx, &parsed).unwrap();
-    let source = generator::render_source(&ctx, &ir);
+    let source = generator::render_source(&ctx, &ir).unwrap();
     let go = render_go_structs(&ctx, &ir).unwrap();
     let go_contents = &go[0].contents;
 
@@ -558,7 +619,7 @@ output:
     let parsed = parser::parse(&ctx).unwrap();
     let ir = ir::normalize(&ctx, &parsed).unwrap();
     let header = render_header(&ctx, &ir);
-    let source = render_source(&ctx, &ir);
+    let source = render_source(&ctx, &ir).unwrap();
     let go = render_go_structs(&ctx, &ir).unwrap();
     let go_text = go
         .iter()
@@ -807,7 +868,7 @@ output:
     let parsed = parser::parse(&ctx).unwrap();
     let ir = ir::normalize(&ctx, &parsed).unwrap();
     let header = render_header(&ctx, &ir);
-    let source = render_source(&ctx, &ir);
+    let source = render_source(&ctx, &ir).unwrap();
     let go = render_go_structs(&ctx, &ir).unwrap();
 
     assert!(header.contains("int cgowrap_Counter_GetValue(const CounterHandle* self);"));
@@ -892,7 +953,7 @@ output:
     let parsed = parser::parse(&ctx).unwrap();
     let ir = ir::normalize(&ctx, &parsed).unwrap();
     let header = render_header(&ctx, &ir);
-    let source = render_source(&ctx, &ir);
+    let source = render_source(&ctx, &ir).unwrap();
     let go = render_go_structs(&ctx, &ir).unwrap();
     let go_text = &go[0].contents;
 
@@ -972,7 +1033,7 @@ output:
     let parsed = parser::parse(&ctx).unwrap();
     let ir = ir::normalize(&ctx, &parsed).unwrap();
     let header = render_header(&ctx, &ir);
-    let source = render_source(&ctx, &ir);
+    let source = render_source(&ctx, &ir).unwrap();
 
     let getter = ir
         .functions
@@ -1078,7 +1139,7 @@ fn opaque_model_value_return_gets_synthetic_delete_and_owned_go_wrapper() {
     };
 
     let header = render_header(&ctx, &ir);
-    let source = render_source(&ctx, &ir);
+    let source = render_source(&ctx, &ir).unwrap();
     let go = render_go_structs(&ctx, &ir).unwrap();
     let go_text = go
         .iter()
@@ -1134,7 +1195,7 @@ output:
     let ctx = PipelineContext::new(config.clone());
     let parsed = parser::parse(&ctx).unwrap();
     let ir = ir::normalize(&ctx, &parsed).unwrap();
-    let source = render_source(&ctx, &ir);
+    let source = render_source(&ctx, &ir).unwrap();
 
     let ptr_getter = ir
         .functions
@@ -1192,7 +1253,7 @@ output:
     let parsed = parser::parse(&ctx).unwrap();
     let ir = ir::normalize(&ctx, &parsed).unwrap();
     let header = render_header(&ctx, &ir);
-    let source = render_source(&ctx, &ir);
+    let source = render_source(&ctx, &ir).unwrap();
     let go = render_go_structs(&ctx, &ir).unwrap();
     let go_text = go
         .iter()

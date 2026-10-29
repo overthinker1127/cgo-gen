@@ -74,59 +74,89 @@ impl ParsedApi {
     }
 }
 
+struct ClangIndex {
+    raw: CXIndex,
+}
+
+impl ClangIndex {
+    fn new() -> Result<Self> {
+        // SAFETY: Both flags are valid, and creating an index requires no input handles.
+        let raw = unsafe { clang_createIndex(0, 0) };
+        if raw.is_null() {
+            bail!("failed to create libclang index");
+        }
+        Ok(Self { raw })
+    }
+}
+
+impl Drop for ClangIndex {
+    fn drop(&mut self) {
+        // SAFETY: This is the sole owner of a non-null index; all translation units
+        // borrow it, so they have already been disposed before this owner can drop.
+        unsafe { clang_disposeIndex(self.raw) };
+    }
+}
+
+struct TranslationUnit<'index> {
+    raw: CXTranslationUnit,
+    _index: &'index ClangIndex,
+}
+
+impl Drop for TranslationUnit<'_> {
+    fn drop(&mut self) {
+        if !self.raw.is_null() {
+            // SAFETY: A non-null handle was returned by libclang into this sole owner,
+            // and the borrowed index remains alive throughout disposal.
+            unsafe { clang_disposeTranslationUnit(self.raw) };
+        }
+    }
+}
+
 pub fn parse(ctx: &PipelineContext) -> Result<ParsedApi> {
     let mut api = ParsedApi::default();
     let filter = ParseFilter::from_context(ctx);
     let translation_units = compiler::collect_translation_units(&ctx.config)?;
     let mut discovered_headers = BTreeSet::new();
-    unsafe {
-        let index = clang_createIndex(0, 0);
-        if index.is_null() {
-            bail!("failed to create libclang index");
-        }
+    let index = ClangIndex::new()?;
+    parse_translation_units(
+        &index,
+        ctx,
+        &filter,
+        &translation_units,
+        &mut discovered_headers,
+        &mut api,
+    )?;
 
-        parse_translation_units(
-            index,
-            ctx,
-            &filter,
-            &translation_units,
-            &mut discovered_headers,
-            &mut api,
-        )?;
-
-        if !ctx.input.dirs.is_empty() {
-            let all_headers = ctx.config.discovered_headers()?;
-            let supplemental_headers = all_headers
-                .into_iter()
-                .filter(|path| {
-                    !discovered_headers.iter().any(|seen| {
-                        Path::new(seen)
-                            .canonicalize()
-                            .map(|candidate| candidate == *path)
-                            .unwrap_or(false)
-                    })
+    if !ctx.input.dirs.is_empty() {
+        let all_headers = ctx.config.discovered_headers()?;
+        let supplemental_headers = all_headers
+            .into_iter()
+            .filter(|path| {
+                !discovered_headers.iter().any(|seen| {
+                    Path::new(seen)
+                        .canonicalize()
+                        .map(|candidate| candidate == *path)
+                        .unwrap_or(false)
                 })
-                .filter(|path| {
-                    ctx.target_header
-                        .as_ref()
-                        .map(|target| same_path(path, target))
-                        .unwrap_or(true)
-                })
-                .collect::<Vec<_>>();
+            })
+            .filter(|path| {
+                ctx.target_header
+                    .as_ref()
+                    .map(|target| same_path(path, target))
+                    .unwrap_or(true)
+            })
+            .collect::<Vec<_>>();
 
-            if !supplemental_headers.is_empty() {
-                parse_translation_units(
-                    index,
-                    ctx,
-                    &filter,
-                    &supplemental_headers,
-                    &mut discovered_headers,
-                    &mut api,
-                )?;
-            }
+        if !supplemental_headers.is_empty() {
+            parse_translation_units(
+                &index,
+                ctx,
+                &filter,
+                &supplemental_headers,
+                &mut discovered_headers,
+                &mut api,
+            )?;
         }
-
-        clang_disposeIndex(index);
     }
 
     api.headers = discovered_headers.into_iter().collect();
@@ -134,8 +164,8 @@ pub fn parse(ctx: &PipelineContext) -> Result<ParsedApi> {
     Ok(api)
 }
 
-unsafe fn parse_translation_units(
-    index: CXIndex,
+fn parse_translation_units(
+    index: &ClangIndex,
     ctx: &PipelineContext,
     filter: &ParseFilter,
     translation_units: &[PathBuf],
@@ -145,30 +175,35 @@ unsafe fn parse_translation_units(
     for translation_unit_path in translation_units {
         compiler::ensure_header_exists(translation_unit_path)?;
         let args = compiler::collect_clang_args(&ctx.config, translation_unit_path)?;
-        let c_header = CString::new(translation_unit_path.to_string_lossy().to_string())?;
+        let c_header = CString::new(translation_unit_path.to_string_lossy().as_bytes())?;
         let c_args = args
             .iter()
             .map(|arg| CString::new(arg.as_str()))
             .collect::<std::result::Result<Vec<_>, _>>()?;
-        let mut arg_ptrs = c_args.iter().map(|arg| arg.as_ptr()).collect::<Vec<_>>();
+        let arg_ptrs = c_args.iter().map(|arg| arg.as_ptr()).collect::<Vec<_>>();
 
         let flags = (CXTranslationUnit_DetailedPreprocessingRecord
             | CXTranslationUnit_SkipFunctionBodies) as c_int;
-        let mut translation_unit = ptr::null_mut();
+        let mut translation_unit = TranslationUnit {
+            raw: ptr::null_mut(),
+            _index: index,
+        };
+        // SAFETY: The index is live, the C strings and pointer array outlive this call,
+        // and the output points to the guard's writable handle. No unsaved files are used.
         let error = unsafe {
             clang_parseTranslationUnit2(
-                index,
+                index.raw,
                 c_header.as_ptr(),
-                arg_ptrs.as_mut_ptr(),
+                arg_ptrs.as_ptr(),
                 arg_ptrs.len() as c_int,
                 ptr::null_mut(),
                 0,
                 flags,
-                &mut translation_unit,
+                &mut translation_unit.raw,
             )
         };
 
-        if error != CXError_Success || translation_unit.is_null() {
+        if error != CXError_Success || translation_unit.raw.is_null() {
             bail!(
                 "failed to parse {} with libclang (error code {})",
                 translation_unit_path.display(),
@@ -176,22 +211,20 @@ unsafe fn parse_translation_units(
             );
         }
 
-        let root = unsafe { clang_getTranslationUnitCursor(translation_unit) };
+        // SAFETY: Parsing succeeded with a non-null translation unit kept alive by its guard.
+        let root = unsafe { clang_getTranslationUnitCursor(translation_unit.raw) };
         for child in direct_children(root) {
             collect_entity(child, &[], filter, discovered_headers, api)?;
         }
 
-        let diagnostics = collect_diagnostics(translation_unit);
+        let diagnostics = collect_diagnostics(&translation_unit);
         if !diagnostics.is_empty() {
-            unsafe { clang_disposeTranslationUnit(translation_unit) };
             bail!(
                 "libclang reported diagnostics while parsing {}:\n{}",
                 translation_unit_path.display(),
                 diagnostics.join("\n")
             );
         }
-
-        unsafe { clang_disposeTranslationUnit(translation_unit) };
     }
 
     Ok(())
@@ -355,6 +388,7 @@ fn collect_entity(
     }
     record_header_path(cursor, discovered_headers);
 
+    // SAFETY: The cursor belongs to the guarded translation unit being traversed.
     match unsafe { clang_getCursorKind(cursor) } {
         CXCursor_Namespace => {
             let Some(name) = cursor_spelling(cursor) else {
@@ -367,6 +401,7 @@ fn collect_entity(
             }
         }
         CXCursor_ClassDecl | CXCursor_StructDecl => {
+            // SAFETY: This class/struct cursor's translation unit is still live.
             if unsafe { clang_isCursorDefinition(cursor) } == 0 {
                 return Ok(());
             }
@@ -401,16 +436,14 @@ fn collect_entity(
             let Some(name) = cursor_spelling(cursor) else {
                 return Ok(());
             };
-            if let Some(callback) =
-                parse_callback_typedef(cursor, namespace.to_vec(), name.clone())?
-            {
+            if let Some(callback) = parse_callback_typedef(cursor, namespace, &name)? {
                 api.callbacks.push(callback);
                 return Ok(());
             }
-            let Some(enum_cursor) = direct_children(cursor)
-                .into_iter()
-                .find(|child| unsafe { clang_getCursorKind(*child) } == CXCursor_EnumDecl)
-            else {
+            let Some(enum_cursor) = direct_children(cursor).into_iter().find(|child| {
+                // SAFETY: These children belong to the same live translation unit.
+                unsafe { clang_getCursorKind(*child) == CXCursor_EnumDecl }
+            }) else {
                 return Ok(());
             };
             if enum_decl_name(enum_cursor).is_none() {
@@ -448,6 +481,7 @@ fn parse_record(
         .ok_or_else(|| anyhow!("anonymous classes are unsupported in v1"))?;
     let source_header = normalized_cursor_file_path(cursor)
         .ok_or_else(|| anyhow!("failed to determine source header for class `{name}`"))?;
+    // SAFETY: The record cursor belongs to the still-live guarded translation unit.
     let kind = if unsafe { clang_getCursorKind(cursor) == CXCursor_StructDecl } {
         RecordKind::Struct
     } else {
@@ -466,15 +500,17 @@ fn parse_record(
             continue;
         }
         record_header_path(child, discovered_headers);
-        let accessible = matches!(unsafe { clang_getCXXAccessSpecifier(child) }, CX_CXXPublic)
-            || (kind == RecordKind::Struct
-                && unsafe { clang_getCXXAccessSpecifier(child) } == CX_CXXInvalidAccessSpecifier);
+        // SAFETY: This child was obtained from the record in the live translation unit.
+        let access = unsafe { clang_getCXXAccessSpecifier(child) };
+        let accessible = matches!(access, CX_CXXPublic)
+            || (kind == RecordKind::Struct && access == CX_CXXInvalidAccessSpecifier);
 
-        match unsafe { clang_getCursorKind(child) } {
-            CXCursor_CXXMethod | CXCursor_ConversionFunction
-                if unsafe { clang_CXXMethod_isPureVirtual(child) != 0 } =>
-            {
-                is_abstract = true;
+        // SAFETY: The child remains valid while the translation unit is guarded.
+        let child_kind = unsafe { clang_getCursorKind(child) };
+        match child_kind {
+            CXCursor_CXXMethod | CXCursor_ConversionFunction => {
+                // SAFETY: The kind check identifies a method in the live translation unit.
+                is_abstract |= unsafe { clang_CXXMethod_isPureVirtual(child) != 0 };
             }
             _ => {}
         }
@@ -483,7 +519,7 @@ fn parse_record(
             continue;
         }
 
-        match unsafe { clang_getCursorKind(child) } {
+        match child_kind {
             CXCursor_Constructor => {
                 has_declared_constructor = true;
                 constructors.push(CppConstructor {
@@ -505,6 +541,7 @@ fn parse_record(
             }
             CXCursor_CXXMethod | CXCursor_ConversionFunction => {
                 let spelling = cursor_spelling(child).unwrap_or_default();
+                // SAFETY: The matched cursor is a method in the live translation unit.
                 let is_const = unsafe { clang_CXXMethod_isConst(child) != 0 };
                 if operators::is_operator_spelling(&spelling) {
                     let owner = qualified_cpp_name(&namespace, &name);
@@ -527,6 +564,7 @@ fn parse_record(
             }
             CXCursor_FriendDecl => {
                 for friend_child in direct_children(child) {
+                    // SAFETY: The friend child belongs to the same live translation unit.
                     if unsafe { clang_getCursorKind(friend_child) } != CXCursor_FunctionDecl {
                         continue;
                     }
@@ -615,9 +653,13 @@ fn parse_enum_with_name(cursor: CXCursor, namespace: Vec<String>, name: String) 
     let source_header = normalized_cursor_file_path(cursor).unwrap_or_default();
     let variants = direct_children(cursor)
         .into_iter()
-        .filter(|child| unsafe { clang_getCursorKind(*child) } == CXCursor_EnumConstantDecl)
+        .filter(|child| {
+            // SAFETY: These children belong to the enum's live translation unit.
+            unsafe { clang_getCursorKind(*child) == CXCursor_EnumConstantDecl }
+        })
         .map(|child| CppEnumVariant {
             name: cursor_spelling(child).unwrap_or_default(),
+            // SAFETY: The filter identified an enum constant in the live translation unit.
             value: Some(unsafe { clang_getEnumConstantDeclValue(child) }.to_string()),
         })
         .collect();
@@ -636,9 +678,13 @@ fn parse_anonymous_enum(cursor: CXCursor, namespace: Vec<String>) -> CppEnum {
     let (line, column) = cursor_line_column(cursor);
     let variants = direct_children(cursor)
         .into_iter()
-        .filter(|child| unsafe { clang_getCursorKind(*child) } == CXCursor_EnumConstantDecl)
+        .filter(|child| {
+            // SAFETY: These children belong to the enum's live translation unit.
+            unsafe { clang_getCursorKind(*child) == CXCursor_EnumConstantDecl }
+        })
         .map(|child| CppEnumVariant {
             name: cursor_spelling(child).unwrap_or_default(),
+            // SAFETY: The filter identified an enum constant in the live translation unit.
             value: Some(unsafe { clang_getEnumConstantDeclValue(child) }.to_string()),
         })
         .collect();
@@ -653,6 +699,7 @@ fn parse_anonymous_enum(cursor: CXCursor, namespace: Vec<String>) -> CppEnum {
 }
 
 fn parse_macro_definition(cursor: CXCursor) -> Option<CppMacroConstant> {
+    // SAFETY: The caller selected a macro definition from the live translation unit.
     if unsafe { clang_Cursor_isMacroFunctionLike(cursor) } != 0 {
         return None;
     }
@@ -673,9 +720,10 @@ fn parse_macro_definition(cursor: CXCursor) -> Option<CppMacroConstant> {
 
 fn parse_callback_typedef(
     cursor: CXCursor,
-    namespace: Vec<String>,
-    name: String,
+    namespace: &[String],
+    name: &str,
 ) -> Result<Option<CppCallbackTypedef>> {
+    // SAFETY: The caller selected a typedef declaration in the live translation unit.
     let underlying = unsafe { clang_getTypedefDeclUnderlyingType(cursor) };
     let function_type = callback_function_type(underlying);
     if function_type.kind == CXType_Invalid {
@@ -685,20 +733,27 @@ fn parse_callback_typedef(
     let source_header = normalized_cursor_file_path(cursor).ok_or_else(|| {
         anyhow!("failed to determine source header for callback typedef `{name}`")
     })?;
+    // SAFETY: The validated function type and its result belong to the live translation unit;
+    // type_spelling consumes each newly returned CXString.
     let return_type =
         canonicalize_type_name(&unsafe { type_spelling(clang_getResultType(function_type)) });
+    // SAFETY: The result and canonical type are derived from that same live function type.
     let return_canonical_type = canonicalize_type_name(&unsafe {
         type_spelling(clang_getCanonicalType(clang_getResultType(function_type)))
     });
 
     let child_params = direct_children(cursor)
         .into_iter()
-        .filter(|child| unsafe { clang_getCursorKind(*child) } == CXCursor_ParmDecl)
+        .filter(|child| {
+            // SAFETY: These children belong to the typedef's live translation unit.
+            unsafe { clang_getCursorKind(*child) == CXCursor_ParmDecl }
+        })
         .map(|arg| CppParam {
             name: cursor_spelling(arg).unwrap_or_else(|| "arg".to_string()),
             ty: canonicalize_type_name(&cursor_type_spelling(arg)),
             canonical_ty: canonicalize_type_name(&cursor_canonical_type_spelling(arg)),
             is_function_pointer: cursor_is_function_pointer(arg),
+            // SAFETY: The filter selected a parameter cursor in the live translation unit.
             callback_typedef: callback_typedef_name_from_type(unsafe { clang_getCursorType(arg) }),
             has_default: param_has_default(arg),
         })
@@ -719,8 +774,8 @@ fn parse_callback_typedef(
 
     Ok(Some(CppCallbackTypedef {
         source_header,
-        namespace,
-        name,
+        namespace: namespace.to_vec(),
+        name: name.to_string(),
         return_type,
         return_canonical_type,
         params,
@@ -732,9 +787,12 @@ fn enum_decl_name(cursor: CXCursor) -> Option<String> {
 }
 
 fn cursor_line_column(cursor: CXCursor) -> (u32, u32) {
+    // SAFETY: The cursor belongs to the guarded translation unit being traversed.
     let location = unsafe { clang_getCursorLocation(cursor) };
     let mut line = 0;
     let mut column = 0;
+    // SAFETY: The location belongs to the live translation unit; the output pointers
+    // are writable, and null pointers omit the unneeded file and offset outputs.
     unsafe {
         clang_getSpellingLocation(
             location,
@@ -752,18 +810,23 @@ fn is_unnamed_enum_spelling(name: &str) -> bool {
 }
 
 fn parse_params(cursor: CXCursor) -> Vec<CppParam> {
+    // SAFETY: The caller selected a function or constructor in the live translation unit.
     let count = unsafe { clang_Cursor_getNumArguments(cursor) };
     if count < 0 {
         return Vec::new();
     }
 
     (0..count)
-        .map(|index| unsafe { clang_Cursor_getArgument(cursor, index as c_uint) })
+        .map(|index| {
+            // SAFETY: The index is below libclang's argument count and the cursor is live.
+            unsafe { clang_Cursor_getArgument(cursor, index as c_uint) }
+        })
         .map(|arg| CppParam {
             name: cursor_spelling(arg).unwrap_or_else(|| "arg".to_string()),
             ty: canonicalize_type_name(&cursor_type_spelling(arg)),
             canonical_ty: canonicalize_type_name(&cursor_canonical_type_spelling(arg)),
             is_function_pointer: cursor_is_function_pointer(arg),
+            // SAFETY: The argument cursor was returned from the live function cursor.
             callback_typedef: callback_typedef_name_from_type(unsafe { clang_getCursorType(arg) }),
             has_default: param_has_default(arg),
         })
@@ -778,17 +841,23 @@ fn parse_params(cursor: CXCursor) -> Vec<CppParam> {
 }
 
 fn parse_callback_params_from_type(function_type: CXType) -> Vec<CppParam> {
+    // SAFETY: This function type was obtained from a typedef in the live translation unit.
     let count = unsafe { clang_getNumArgTypes(function_type) };
     if count < 0 {
         return Vec::new();
     }
 
     (0..count)
-        .map(|index| unsafe { clang_getArgType(function_type, index as c_uint) })
+        .map(|index| {
+            // SAFETY: The index is below the live function type's argument count.
+            unsafe { clang_getArgType(function_type, index as c_uint) }
+        })
         .enumerate()
         .map(|(index, ty)| CppParam {
             name: format!("arg{index}"),
+            // SAFETY: The argument type belongs to the live function type.
             ty: canonicalize_type_name(&unsafe { type_spelling(ty) }),
+            // SAFETY: Canonicalization preserves the argument type's live translation unit.
             canonical_ty: canonicalize_type_name(&unsafe {
                 type_spelling(clang_getCanonicalType(ty))
             }),
@@ -806,40 +875,51 @@ fn param_has_default(cursor: CXCursor) -> bool {
 }
 
 fn result_type_name(cursor: CXCursor) -> String {
+    // SAFETY: The function cursor and its result type belong to the live translation unit.
     canonicalize_type_name(&unsafe { type_spelling(clang_getCursorResultType(cursor)) })
 }
 
 fn result_canonical_type_name(cursor: CXCursor) -> String {
+    // SAFETY: The result and canonical types derive from the live function cursor.
     canonicalize_type_name(&unsafe {
         type_spelling(clang_getCanonicalType(clang_getCursorResultType(cursor)))
     })
 }
 
 fn result_is_function_pointer(cursor: CXCursor) -> bool {
+    // SAFETY: The function cursor belongs to the guarded translation unit being traversed.
     is_function_pointer_type(unsafe { clang_getCursorResultType(cursor) })
 }
 
 fn cursor_type_spelling(cursor: CXCursor) -> String {
+    // SAFETY: The cursor and the type obtained from it belong to the live translation unit.
     unsafe { type_spelling(clang_getCursorType(cursor)) }
 }
 
 fn cursor_canonical_type_spelling(cursor: CXCursor) -> String {
+    // SAFETY: The cursor, its type, and the canonical type share the live translation unit.
     unsafe { type_spelling(clang_getCanonicalType(clang_getCursorType(cursor))) }
 }
 
 fn cursor_is_function_pointer(cursor: CXCursor) -> bool {
+    // SAFETY: The cursor belongs to the guarded translation unit being traversed.
     is_function_pointer_type(unsafe { clang_getCursorType(cursor) })
 }
 
+/// # Safety
+/// `ty` must be a libclang-returned type whose translation unit remains alive for this call.
 unsafe fn type_spelling(ty: CXType) -> String {
+    // SAFETY: The caller keeps the type live, and the returned CXString is consumed once.
     unsafe { cxstring_to_string(clang_getTypeSpelling(ty)) }
 }
 
 fn is_function_pointer_type(ty: CXType) -> bool {
+    // SAFETY: The type was obtained during traversal of the still-live translation unit.
     let canonical = unsafe { clang_getCanonicalType(ty) };
     match canonical.kind {
         CXType_FunctionProto | CXType_FunctionNoProto => true,
         CXType_Pointer => {
+            // SAFETY: The canonical type is a pointer type in that same live translation unit.
             let pointee = unsafe { clang_getPointeeType(canonical) };
             matches!(pointee.kind, CXType_FunctionProto | CXType_FunctionNoProto)
         }
@@ -848,10 +928,12 @@ fn is_function_pointer_type(ty: CXType) -> bool {
 }
 
 fn callback_function_type(ty: CXType) -> CXType {
+    // SAFETY: The type was obtained from a typedef in the still-live translation unit.
     let canonical = unsafe { clang_getCanonicalType(ty) };
     match canonical.kind {
         CXType_FunctionProto | CXType_FunctionNoProto => canonical,
         CXType_Pointer => {
+            // SAFETY: The canonical type is a pointer type in that same live translation unit.
             let pointee = unsafe { clang_getPointeeType(canonical) };
             if matches!(pointee.kind, CXType_FunctionProto | CXType_FunctionNoProto) {
                 pointee
@@ -875,10 +957,13 @@ fn callback_typedef_name_from_type(ty: CXType) -> Option<String> {
         return None;
     }
 
+    // SAFETY: The type belongs to the guarded translation unit being traversed.
     let declaration = unsafe { clang_getTypeDeclaration(ty) };
+    // SAFETY: Libclang returned the declaration cursor; null cursors may be compared.
     if unsafe { clang_equalCursors(declaration, clang_getNullCursor()) } != 0 {
         return None;
     }
+    // SAFETY: The non-null declaration cursor belongs to the same live translation unit.
     if unsafe { clang_getCursorKind(declaration) } != CXCursor_TypedefDecl {
         return None;
     }
@@ -888,6 +973,8 @@ fn callback_typedef_name_from_type(ty: CXType) -> Option<String> {
 
 fn direct_children(cursor: CXCursor) -> Vec<CXCursor> {
     let mut children = Vec::new();
+    // SAFETY: The cursor is live and libclang invokes collect_child synchronously with
+    // the aligned, initialized vector pointer, which is exclusively used by the callback.
     unsafe {
         clang_visitChildren(
             cursor,
@@ -898,32 +985,43 @@ fn direct_children(cursor: CXCursor) -> Vec<CXCursor> {
     children
 }
 
+/// # Safety
+/// Only pass this callback to a synchronous `clang_visitChildren` call with `data`
+/// pointing to an initialized, aligned, exclusively accessible `Vec<CXCursor>`.
 extern "C" fn collect_child(
     cursor: CXCursor,
     _parent: CXCursor,
     data: CXClientData,
 ) -> CXChildVisitResult {
+    // SAFETY: direct_children supplies its live vector for the duration of synchronous
+    // visitation, and no other access to the vector occurs while this callback runs.
     let children = unsafe { &mut *(data as *mut Vec<CXCursor>) };
     children.push(cursor);
     CXChildVisit_Continue
 }
 
-fn collect_diagnostics(translation_unit: CXTranslationUnit) -> Vec<String> {
-    let count = unsafe { clang_getNumDiagnostics(translation_unit) };
+fn collect_diagnostics(translation_unit: &TranslationUnit<'_>) -> Vec<String> {
+    // SAFETY: The caller has checked successful parsing and the guard keeps the unit live.
+    let count = unsafe { clang_getNumDiagnostics(translation_unit.raw) };
     let mut diagnostics = Vec::new();
     for index in 0..count {
-        unsafe {
-            let diagnostic = clang_getDiagnostic(translation_unit, index);
-            let severity = clang_getDiagnosticSeverity(diagnostic);
-            if severity >= CXDiagnostic_Error {
-                let message = cxstring_to_string(clang_formatDiagnostic(
+        // SAFETY: The index is below the diagnostic count of the still-live translation unit.
+        let diagnostic = unsafe { clang_getDiagnostic(translation_unit.raw, index) };
+        // SAFETY: The diagnostic was just acquired and has not been disposed.
+        let severity = unsafe { clang_getDiagnosticSeverity(diagnostic) };
+        if severity >= CXDiagnostic_Error {
+            // SAFETY: The diagnostic is live; the formatting options are libclang's defaults,
+            // and the newly returned CXString is consumed and disposed exactly once.
+            let message = unsafe {
+                cxstring_to_string(clang_formatDiagnostic(
                     diagnostic,
                     clang_defaultDiagnosticDisplayOptions(),
-                ));
-                diagnostics.push(message);
-            }
-            clang_disposeDiagnostic(diagnostic);
+                ))
+            };
+            diagnostics.push(message);
         }
+        // SAFETY: This is the sole owner of the acquired diagnostic, after its final use.
+        unsafe { clang_disposeDiagnostic(diagnostic) };
     }
     diagnostics
 }
@@ -989,14 +1087,17 @@ fn normalized_cursor_file_path(cursor: CXCursor) -> Option<PathBuf> {
 }
 
 fn is_main_file(cursor: CXCursor) -> bool {
+    // SAFETY: The cursor and its source location belong to the live translation unit.
     unsafe { clang_Location_isFromMainFile(clang_getCursorLocation(cursor)) != 0 }
 }
 
 fn is_system_header(cursor: CXCursor) -> bool {
+    // SAFETY: The cursor and its source location belong to the live translation unit.
     unsafe { clang_Location_isInSystemHeader(clang_getCursorLocation(cursor)) != 0 }
 }
 
 fn cursor_spelling(cursor: CXCursor) -> Option<String> {
+    // SAFETY: The cursor is live, and the newly returned CXString is consumed exactly once.
     let spelling = unsafe { cxstring_to_string(clang_getCursorSpelling(cursor)) };
     if spelling.is_empty() {
         None
@@ -1006,32 +1107,43 @@ fn cursor_spelling(cursor: CXCursor) -> Option<String> {
 }
 
 fn cursor_token_spellings(cursor: CXCursor) -> Vec<String> {
-    unsafe {
-        let translation_unit = clang_Cursor_getTranslationUnit(cursor);
-        if translation_unit.is_null() {
-            return Vec::new();
-        }
+    // SAFETY: The cursor belongs to the guarded translation unit being traversed.
+    let translation_unit = unsafe { clang_Cursor_getTranslationUnit(cursor) };
+    if translation_unit.is_null() {
+        return Vec::new();
+    }
 
-        let mut tokens = ptr::null_mut();
-        let mut token_count = 0;
+    let mut tokens = ptr::null_mut();
+    let mut token_count = 0;
+    // SAFETY: The cursor extent belongs to this live translation unit, and the output
+    // pointers are writable for libclang's token allocation and its length.
+    unsafe {
         clang_tokenize(
             translation_unit,
             clang_getCursorExtent(cursor),
             &mut tokens,
             &mut token_count,
         );
-        if tokens.is_null() || token_count == 0 {
-            return Vec::new();
-        }
-
-        let slice = std::slice::from_raw_parts(tokens, token_count as usize);
-        let out = slice
-            .iter()
-            .map(|token| cxstring_to_string(clang_getTokenSpelling(translation_unit, *token)))
-            .collect::<Vec<_>>();
-        clang_disposeTokens(translation_unit, tokens, token_count);
-        out
     }
+    if tokens.is_null() {
+        return Vec::new();
+    }
+
+    // SAFETY: Libclang returned a non-null, aligned buffer of token_count initialized
+    // tokens, kept allocated until after this slice's final use.
+    let slice = unsafe { std::slice::from_raw_parts(tokens, token_count as usize) };
+    let out = slice
+        .iter()
+        .map(|token| {
+            // SAFETY: Each token belongs to this live translation unit and token buffer;
+            // the newly returned spelling is consumed and disposed exactly once.
+            unsafe { cxstring_to_string(clang_getTokenSpelling(translation_unit, *token)) }
+        })
+        .collect::<Vec<_>>();
+    // SAFETY: This allocation came from clang_tokenize for this live translation unit.
+    // Release every non-null buffer exactly once, including zero-token allocations.
+    unsafe { clang_disposeTokens(translation_unit, tokens, token_count) };
+    out
 }
 
 fn record_header_path(cursor: CXCursor, discovered_headers: &mut BTreeSet<String>) {
@@ -1044,27 +1156,35 @@ fn record_header_path(cursor: CXCursor, discovered_headers: &mut BTreeSet<String
     discovered_headers.insert(path.display().to_string());
 }
 
-fn cursor_file_path(cursor: CXCursor) -> Option<PathBuf> {
-    unsafe {
-        let location = clang_getCursorLocation(cursor);
-        if clang_equalLocations(location, clang_getNullLocation()) != 0 {
-            return None;
-        }
+pub(super) fn cursor_file_path(cursor: CXCursor) -> Option<PathBuf> {
+    // SAFETY: Parser and operator traversal keep the cursor's translation unit alive.
+    let location = unsafe { clang_getCursorLocation(cursor) };
+    // SAFETY: The location came from libclang, and a null location is valid for comparison.
+    if unsafe { clang_equalLocations(location, clang_getNullLocation()) } != 0 {
+        return None;
+    }
 
-        let mut file = ptr::null_mut();
-        let mut line = 0;
-        let mut column = 0;
-        let mut offset = 0;
-        clang_getExpansionLocation(location, &mut file, &mut line, &mut column, &mut offset);
-        if file.is_null() {
-            return None;
-        }
-        let raw = cxstring_to_string(clang_getFileName(file));
-        if raw.is_empty() {
-            None
-        } else {
-            Some(PathBuf::from(raw))
-        }
+    let mut file = ptr::null_mut();
+    // SAFETY: The location is live, file is writable, and null pointers omit unused outputs.
+    unsafe {
+        clang_getExpansionLocation(
+            location,
+            &mut file,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+        );
+    }
+    if file.is_null() {
+        return None;
+    }
+    // SAFETY: The non-null file belongs to the live translation unit, and the newly
+    // returned CXString is consumed and disposed exactly once.
+    let raw = unsafe { cxstring_to_string(clang_getFileName(file)) };
+    if raw.is_empty() {
+        None
+    } else {
+        Some(PathBuf::from(raw))
     }
 }
 
@@ -1082,15 +1202,22 @@ fn is_header_path(path: &Path) -> bool {
     )
 }
 
-unsafe fn cxstring_to_string(raw: CXString) -> String {
+/// # Safety
+/// `raw` must be a valid, undisposed `CXString` returned by libclang. This call
+/// takes its disposal obligation; no borrowed C string may be used after it returns.
+pub(super) unsafe fn cxstring_to_string(raw: CXString) -> String {
+    // SAFETY: The caller transfers a valid, undisposed libclang string.
     let value = unsafe { clang_getCString(raw) };
     let owned = if value.is_null() {
         String::new()
     } else {
+        // SAFETY: Libclang's non-null C string is NUL-terminated and remains valid
+        // until raw is disposed, after this owned copy is completed.
         unsafe { CStr::from_ptr(value) }
             .to_string_lossy()
             .into_owned()
     };
+    // SAFETY: The transferred string is disposed exactly once after its final borrowed use.
     unsafe { clang_disposeString(raw) };
     owned
 }

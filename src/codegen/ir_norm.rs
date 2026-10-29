@@ -234,12 +234,11 @@ pub fn normalize(ctx: &PipelineContext, api: &ParsedApi) -> Result<IrModule> {
         .filter(|record| record.is_abstract)
         .map(|record| cpp_qualified(&record.namespace, &record.name))
         .collect::<BTreeSet<_>>();
-    let preferred_model_aliases = if ctx.preferred_model_aliases.is_empty() {
-        collect_preferred_model_aliases(api)
+    let records = if ctx.preferred_model_aliases.is_empty() {
+        collect_ir_records(api, &collect_preferred_model_aliases(api))
     } else {
-        ctx.preferred_model_aliases.clone()
+        collect_ir_records(api, &ctx.preferred_model_aliases)
     };
-    let records = collect_ir_records(api, &preferred_model_aliases);
 
     for record in &records {
         opaque_types.push(OpaqueType {
@@ -268,18 +267,18 @@ pub fn normalize(ctx: &PipelineContext, api: &ParsedApi) -> Result<IrModule> {
             functions.extend(normalize_record(&mut env, record, handle_name)?);
         }
 
+        let empty_signatures = BTreeSet::new();
         let free_signature_groups = collect_function_signature_groups(&api.functions);
         let mut emitted_free_signatures = BTreeMap::<String, BTreeSet<Vec<String>>>::new();
         for function in &api.functions {
             let group_key = cpp_qualified(&function.namespace, &function.name);
             let existing_signatures = free_signature_groups
                 .get(&group_key)
-                .cloned()
-                .unwrap_or_default();
+                .unwrap_or(&empty_signatures);
             let emitted_signatures = emitted_free_signatures.entry(group_key).or_default();
             for params in default_argument_param_variants(
                 &function.params,
-                &existing_signatures,
+                existing_signatures,
                 emitted_signatures,
             ) {
                 if let Some(function) = normalize_function(&mut env, function, params)? {
@@ -295,14 +294,13 @@ pub fn normalize(ctx: &PipelineContext, api: &ParsedApi) -> Result<IrModule> {
             let group_key = (operator_cpp_name(operator), operator.is_const);
             let existing_signatures = free_operator_signature_groups
                 .get(&group_key)
-                .cloned()
-                .unwrap_or_default();
+                .unwrap_or(&empty_signatures);
             let emitted_signatures = emitted_free_operator_signatures
                 .entry(group_key)
                 .or_default();
             for params in default_argument_param_variants(
                 &operator.params,
-                &existing_signatures,
+                existing_signatures,
                 emitted_signatures,
             ) {
                 if let Some(function) =
@@ -502,9 +500,9 @@ fn stable_class_handle_name(
 ) -> String {
     let preferred = aliases
         .get(qualified_cpp_type)
-        .cloned()
-        .unwrap_or_else(|| qualified_cpp_type.to_string());
-    stable_model_handle_name(&preferred)
+        .map(String::as_str)
+        .unwrap_or(qualified_cpp_type);
+    stable_model_handle_name(preferred)
 }
 
 fn preferred_model_base_name(display_base: &str, canonical_base: &str) -> String {
@@ -597,7 +595,7 @@ fn ensure_unique_function_symbols(functions: &[IrFunction]) -> Result<()> {
         .map(|(symbol, items)| {
             let origins = items
                 .into_iter()
-                .map(|item| item.cpp_name.clone())
+                .map(|item| item.cpp_name.as_str())
                 .collect::<Vec<_>>()
                 .join(", ");
             format!("wrapper symbol `{symbol}` collides for C++ declarations: {origins}")
@@ -772,20 +770,18 @@ fn normalize_record(
         }],
     });
 
+    let empty_signatures = BTreeSet::new();
     let method_signature_groups = collect_method_signature_groups(&record.methods);
     let mut emitted_method_signatures = BTreeMap::<(String, bool), BTreeSet<Vec<String>>>::new();
     for method in &record.methods {
         let group_key = (method.name.clone(), method.is_const);
         let existing_signatures = method_signature_groups
             .get(&group_key)
-            .cloned()
-            .unwrap_or_default();
+            .unwrap_or(&empty_signatures);
         let emitted_signatures = emitted_method_signatures.entry(group_key).or_default();
-        for params in default_argument_param_variants(
-            &method.params,
-            &existing_signatures,
-            emitted_signatures,
-        ) {
+        for params in
+            default_argument_param_variants(&method.params, existing_signatures, emitted_signatures)
+        {
             if let Some(function) = normalize_method(env, record, handle_name, method, params)? {
                 functions.push(function);
             }
@@ -798,13 +794,12 @@ fn normalize_record(
         let group_key = (operator_cpp_name(operator), operator.is_const);
         let existing_signatures = operator_signature_groups
             .get(&group_key)
-            .cloned()
-            .unwrap_or_default();
+            .unwrap_or(&empty_signatures);
         let emitted_signatures = emitted_operator_signatures.entry(group_key).or_default();
         let owner = operator.owner.as_ref().map(|_| (record, handle_name));
         for params in default_argument_param_variants(
             &operator.params,
-            &existing_signatures,
+            existing_signatures,
             emitted_signatures,
         ) {
             if let Some(function) = operators::normalize_operator(env, owner, operator, params)? {
@@ -1640,14 +1635,17 @@ fn resolved_enum_cpp_type(
     None
 }
 
-fn known_enum_type_name(value: &str, known_enum_types: &BTreeSet<String>) -> Option<String> {
+fn known_enum_type_name<'a>(
+    value: &str,
+    known_enum_types: &'a BTreeSet<String>,
+) -> Option<&'a str> {
     let base = enum_base_cpp_type(value);
     known_enum_types.iter().find_map(|candidate| {
         let normalized = enum_base_cpp_type(candidate);
         (normalized == base
             || normalized.rsplit("::").next().unwrap_or(&normalized) == base
             || base.rsplit("::").next().unwrap_or(&base) == normalized)
-            .then(|| candidate.clone())
+            .then_some(candidate.as_str())
     })
 }
 
@@ -1872,7 +1870,6 @@ fn normalize_type(cpp_type: &str, callback_names: &BTreeSet<String>) -> Result<I
         {
             return Ok(IrType {
                 cpp_type: trimmed.to_string(),
-                c_type: ty.c_type.clone(),
                 ..ty
             });
         }
@@ -2006,60 +2003,42 @@ fn normalize_type(cpp_type: &str, callback_names: &BTreeSet<String>) -> Result<I
                 handle: None,
             })
         }
-        _ if trimmed.ends_with('&') && extern_c_struct_base_type(trimmed).is_some() => {
-            let base = extern_c_struct_base_type(trimmed).unwrap();
-            Ok(IrType {
-                kind: IrTypeKind::ExternStructReference,
-                cpp_type: trimmed.to_string(),
-                c_type: format!("{base}*"),
-                handle: None,
-            })
+        _ => {
+            let is_reference = trimmed.ends_with('&');
+            let is_pointer = trimmed.ends_with('*');
+            let is_indirect = is_reference || is_pointer;
+            if is_indirect && let Some(base) = extern_c_struct_base_type(trimmed) {
+                return Ok(IrType {
+                    kind: if is_reference {
+                        IrTypeKind::ExternStructReference
+                    } else {
+                        IrTypeKind::ExternStructPointer
+                    },
+                    cpp_type: trimmed.to_string(),
+                    c_type: format!("{base}*"),
+                    handle: None,
+                });
+            }
+            if let Some(handle_name) = raw_safe_model_handle_name(trimmed) {
+                return Ok(IrType {
+                    kind: if is_reference {
+                        IrTypeKind::ModelReference
+                    } else if is_pointer {
+                        IrTypeKind::ModelPointer
+                    } else {
+                        IrTypeKind::ModelValue
+                    },
+                    cpp_type: trimmed.to_string(),
+                    c_type: if is_indirect && is_const_qualified_model_type(trimmed) {
+                        format!("const {handle_name}*")
+                    } else {
+                        format!("{handle_name}*")
+                    },
+                    handle: Some(handle_name),
+                });
+            }
+            bail!("unsupported C++ type in v1: {trimmed}")
         }
-        _ if trimmed.ends_with('*') && extern_c_struct_base_type(trimmed).is_some() => {
-            let base = extern_c_struct_base_type(trimmed).unwrap();
-            Ok(IrType {
-                kind: IrTypeKind::ExternStructPointer,
-                cpp_type: trimmed.to_string(),
-                c_type: format!("{base}*"),
-                handle: None,
-            })
-        }
-        _ if trimmed.ends_with('&') && raw_safe_model_handle_name(trimmed).is_some() => {
-            let handle_name = raw_safe_model_handle_name(trimmed).unwrap();
-            Ok(IrType {
-                kind: IrTypeKind::ModelReference,
-                cpp_type: trimmed.to_string(),
-                c_type: if is_const_qualified_model_type(trimmed) {
-                    format!("const {handle_name}*")
-                } else {
-                    format!("{handle_name}*")
-                },
-                handle: Some(handle_name),
-            })
-        }
-        _ if trimmed.ends_with('*') && raw_safe_model_handle_name(trimmed).is_some() => {
-            let handle_name = raw_safe_model_handle_name(trimmed).unwrap();
-            Ok(IrType {
-                kind: IrTypeKind::ModelPointer,
-                cpp_type: trimmed.to_string(),
-                c_type: if is_const_qualified_model_type(trimmed) {
-                    format!("const {handle_name}*")
-                } else {
-                    format!("{handle_name}*")
-                },
-                handle: Some(handle_name),
-            })
-        }
-        _ if raw_safe_model_handle_name(trimmed).is_some() => {
-            let handle_name = raw_safe_model_handle_name(trimmed).unwrap();
-            Ok(IrType {
-                kind: IrTypeKind::ModelValue,
-                cpp_type: trimmed.to_string(),
-                c_type: format!("{handle_name}*"),
-                handle: Some(handle_name),
-            })
-        }
-        _ => bail!("unsupported C++ type in v1: {trimmed}"),
     }
 }
 
@@ -2271,6 +2250,91 @@ mod tests {
     use crate::parser::{
         CppFunction, CppOperator, CppOperatorToken, CppParam, CppRecord, ParsedApi,
     };
+
+    #[test]
+    fn preserves_raw_type_precedence_and_model_constness() {
+        let callback_names = BTreeSet::new();
+        let cases = [
+            ("int*", IrTypeKind::Pointer, "int*", None),
+            ("const int&", IrTypeKind::Reference, "const int*", None),
+            ("char*", IrTypeKind::CString, "char*", None),
+            ("char[2]", IrTypeKind::CString, "const char*", None),
+            (
+                "unsigned char[2]",
+                IrTypeKind::FixedByteArray,
+                "uint8_t*",
+                None,
+            ),
+            (
+                "const struct timeval&",
+                IrTypeKind::ExternStructReference,
+                "struct timeval*",
+                None,
+            ),
+            (
+                "timeval*",
+                IrTypeKind::ExternStructPointer,
+                "struct timeval*",
+                None,
+            ),
+            (
+                "const Widget&",
+                IrTypeKind::ModelReference,
+                "const WidgetHandle*",
+                Some("WidgetHandle"),
+            ),
+            (
+                "Widget*",
+                IrTypeKind::ModelPointer,
+                "WidgetHandle*",
+                Some("WidgetHandle"),
+            ),
+            (
+                "const Widget*",
+                IrTypeKind::ModelPointer,
+                "const WidgetHandle*",
+                Some("WidgetHandle"),
+            ),
+            (
+                "Widget",
+                IrTypeKind::ModelValue,
+                "WidgetHandle*",
+                Some("WidgetHandle"),
+            ),
+            (
+                "const Widget",
+                IrTypeKind::ModelValue,
+                "WidgetHandle*",
+                Some("WidgetHandle"),
+            ),
+        ];
+
+        for (cpp_type, kind, c_type, handle) in cases {
+            let ty = normalize_type(cpp_type, &callback_names).unwrap();
+            assert_eq!(ty.kind, kind, "{cpp_type}");
+            assert_eq!(ty.cpp_type, cpp_type, "{cpp_type}");
+            assert_eq!(ty.c_type, c_type, "{cpp_type}");
+            assert_eq!(ty.handle.as_deref(), handle, "{cpp_type}");
+        }
+    }
+
+    #[test]
+    fn preserves_callback_precedence_and_unsupported_type_errors() {
+        let callback_names = BTreeSet::from(["int".to_string(), "Widget".to_string()]);
+        for cpp_type in ["int", "Widget"] {
+            let ty = normalize_type(cpp_type, &callback_names).unwrap();
+            assert_eq!(ty.kind, IrTypeKind::Callback);
+            assert_eq!(ty.c_type, cpp_type);
+            assert_eq!(ty.handle, None);
+        }
+
+        for cpp_type in ["struct timeval", "std::vector<int>*", "int**"] {
+            assert!(
+                normalize_type(cpp_type, &callback_names).is_err(),
+                "{cpp_type}"
+            );
+        }
+    }
 
     #[test]
     fn normalizes_struct_timeval_pointer_and_reference_as_external_structs() {

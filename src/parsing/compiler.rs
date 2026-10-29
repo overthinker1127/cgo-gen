@@ -257,8 +257,7 @@ fn discover_linux_driver_include_dirs() -> Vec<PathBuf> {
         ["g++", "-E", "-x", "c++", "-", "-v"],
     ];
 
-    for command in candidates {
-        let (program, args) = command.split_first().expect("driver candidate");
+    for [program, args @ ..] in candidates {
         let Ok(output) = Command::new(program).args(args).output() else {
             continue;
         };
